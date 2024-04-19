@@ -8,7 +8,7 @@ def accuracy(y_true, y_pred):
     return np.sum(y_true == y_pred) / len(y_true)
 
 # Generate synthetic data
-X, y = make_blobs(n_samples=150, n_features=2, centers=2, cluster_std=1.05, random_state=2)
+X, y = make_blobs(n_samples=170, n_features=2, centers=2, cluster_std=1.05, random_state=2)
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0, test_size=0.2)
 
 # Initialize and train Perceptron model
@@ -40,8 +40,8 @@ plt.plot([x0_min, x0_max], [x1_min, x1_max], 'b--', label='Decision boundary')
 y_min, y_max = np.amin(X_train[:, 1]), np.amax(X_train[:, 1])
 plt.ylim([y_min - 3, y_max + 3])
 plt.title('Perceptron Classifier Decision Boundary')
-plt.xlabel('Feature 1')
-plt.ylabel('Feature 2')
+plt.xlabel('Feature 1a')
+plt.ylabel('Feature 2b')
 plt.legend()
 
 # Show plot
