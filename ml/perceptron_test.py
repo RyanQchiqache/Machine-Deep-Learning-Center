@@ -40,8 +40,8 @@ plt.plot([x0_min, x0_max], [x1_min, x1_max], 'b--', label='Decision boundary')
 y_min, y_max = np.amin(X_train[:, 1]), np.amax(X_train[:, 1])
 plt.ylim([y_min - 3, y_max + 3])
 plt.title('Perceptron Classifier Decision Boundary')
-plt.xlabel('Feature 1a')
-plt.ylabel('Feature 2b')
+plt.xlabel('Feature 1')
+plt.ylabel('Feature 2')
 plt.legend()
 
 # Show plot
