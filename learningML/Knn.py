@@ -6,7 +6,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.preprocessing import StandardScaler
 
-
+#Using Knn algorithm to predict wheather a person would have diabetes
 class DiabetesPredictor:
     def __init__(self, filename):
         self.dataset = pd.read_csv(filename)
