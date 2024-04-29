@@ -26,10 +26,10 @@ class DiabetesPredictor:
         y = self.dataset.iloc[:, 8]
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
-        # Scale data
+        # Keep DataFrame structure to maintain feature names
         self.scaler = StandardScaler()
-        X_train = self.scaler.fit_transform(X_train)
-        X_test = self.scaler.transform(X_test)
+        X_train = pd.DataFrame(self.scaler.fit_transform(X_train), columns=X_train.columns)
+        X_test = pd.DataFrame(self.scaler.transform(X_test), columns=X_test.columns)
 
         return X_train, X_test, y_train, y_test
 
@@ -62,17 +62,23 @@ class DiabetesPredictor:
 
     # Prediction for an example person predictor.predict([2,3,4,5,6,7,7,7 etc])
     def predict(self, person_data):
-        person_data_scaled = self.scaler.transform([person_data])
+        person_data_df = pd.DataFrame([person_data], columns=self.dataset.columns[:8])
+        person_data_scaled = self.scaler.transform(person_data_df)
         prediction = self.model.predict(person_data_scaled)
         if prediction[0] == 1:
             print("The person is predicted to have diabetes.")
         else:
             print("The person is predicted not to have diabetes.")
 
+if __name__ == '__main__':
+    # Usage
+    DiabetesPredictor = DiabetesPredictor(
+        '/Users/ryanqchiqache/PycharmProjects/Machine-Learning-Learning-Center/learningML/diabetes.csv')
+    X_train, X_test, y_train, y_test = DiabetesPredictor.preprocess_data()
+    DiabetesPredictor.train_model(X_train, y_train)
+    DiabetesPredictor.evaluate_model(X_test, y_test)
+    DiabetesPredictor.predict([2, 130, 76, 25, 60, 23.1, 0.672, 55])  # Example person's data
 
-# Usage
-predictor = DiabetesPredictor('/Users/ryanqchiqache/PycharmProjects/Machine-Learning-Learning-Center/learningML/diabetes.csv')
-X_train, X_test, y_train, y_test = predictor.preprocess_data()
-predictor.train_model(X_train, y_train)
-predictor.evaluate_model(X_test, y_test)
-predictor.predict([2, 130, 76, 25, 60, 23.1, 0.672, 55])  # Example person's data
+
+
+
