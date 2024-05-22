@@ -70,14 +70,33 @@ class DiabetesPredictor:
         else:
             print("The person is predicted not to have diabetes.")
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     # Usage
     DiabetesPredictor = DiabetesPredictor(
-        '/Users/ryanqchiqache/PycharmProjects/Machine-Learning-Learning-Center/learningML/diabetes.csv')
+        '/learningML/diabetes.csv')
     X_train, X_test, y_train, y_test = DiabetesPredictor.preprocess_data()
     DiabetesPredictor.train_model(X_train, y_train)
     DiabetesPredictor.evaluate_model(X_test, y_test)
     DiabetesPredictor.predict([2, 130, 76, 25, 60, 23.1, 0.672, 55])  # Example person's data
+    p
 
 
 
