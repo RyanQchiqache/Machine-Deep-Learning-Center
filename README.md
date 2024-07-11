@@ -6,13 +6,6 @@ Welcome to the Machine Learning Learning Center! This repository is a hub for le
 
 The aim of this center is to provide clear examples, code snippets, and Jupyter notebooks that explain and demonstrate machine learning concepts from the ground up. Whether you are starting with basic machine learning ideas or delving into advanced neural networks, this repository has something for you.
 
-## Contents
-
-- `cnn`: Notebooks and scripts related to Convolutional Neural Networks and their applications in image recognition.
-- `perceptron`: Perceptron class with a perceptron.test file to showcase using matplotlib the training set
-- `learningMl` : Jupyter notebooks to understand several ML concepts (Knn etc...)
-- `LICENSE`: The license file for the project.
-- `MyNoteBook.ipynb`: An example notebook showcasing a machine learning application.
 
 ## Getting Started
 
