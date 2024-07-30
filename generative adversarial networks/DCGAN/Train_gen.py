@@ -11,7 +11,6 @@ import os
 
 """
 Run tensorboard --logdir=logs --load_fast=true in the Terminal to check the tensorboard 
-
 """
 
 # Set device to GPU if available, otherwise use CPU

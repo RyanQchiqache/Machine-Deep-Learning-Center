@@ -4,6 +4,13 @@ import torch.nn as nn
 # Define the Discriminator network
 class Discriminator(nn.Module):
     def __init__(self, channel_image, feature_channel):
+        """
+        Initialize the Discriminator model.
+
+        Parameters:
+        channel_image (int): Number of channels in the input image.
+        feature_channel (int): Number of feature channels after the first convolution.
+        """
         super(Discriminator, self).__init__()
         self.discriminator = nn.Sequential(
             # Initial convolutional layer
@@ -18,22 +25,50 @@ class Discriminator(nn.Module):
             nn.Sigmoid()
         )
 
-    # Define a helper method to create a block with Conv2d, BatchNorm2d, and LeakyReLU layers
     def block_(self, channel_in, channel_out, kernel_size, stride, padding):
+        """
+        Helper method to create a block with Conv2d, BatchNorm2d, and LeakyReLU layers.
+
+        Parameters:
+        channel_in (int): Number of input channels.
+        channel_out (int): Number of output channels.
+        kernel_size (int): Size of the convolutional kernel.
+        stride (int): Stride of the convolution.
+        padding (int): Padding for the convolution.
+
+        Returns:
+        nn.Sequential: Sequential block containing Conv2d, BatchNorm2d, and LeakyReLU layers.
+        """
         return nn.Sequential(
             nn.Conv2d(channel_in, channel_out, kernel_size, stride, padding, bias=False),
             nn.BatchNorm2d(channel_out),
             nn.LeakyReLU(0.2),
         )
 
-    # Forward pass through the discriminator
     def forward(self, x):
+        """
+        Forward pass through the Discriminator.
+
+        Parameters:
+        x (torch.Tensor): Input tensor.
+
+        Returns:
+        torch.Tensor: Output tensor after passing through the discriminator.
+        """
         return self.discriminator(x)
 
 
 # Define the Generator network
 class Generator(nn.Module):
     def __init__(self, z_dimension, channel_image, feature_channel):
+        """
+        Initialize the Generator model.
+
+        Parameters:
+        z_dimension (int): Dimension of the latent vector.
+        channel_image (int): Number of channels in the output image.
+        feature_channel (int): Number of feature channels after the first transpose convolution.
+        """
         super(Generator, self).__init__()
         self.generator = nn.Sequential(
             # Initial block to transform latent vector
@@ -46,28 +81,55 @@ class Generator(nn.Module):
             nn.Tanh()  # Tanh activation to get values in the range [-1, 1]
         )
 
-    # Define a helper method to create a block with ConvTranspose2d, BatchNorm2d, and ReLU layers
     def block_(self, channel_in, channel_out, kernel_size, stride, padding):
+        """
+        Helper method to create a block with ConvTranspose2d, BatchNorm2d, and ReLU layers.
+
+        Parameters:
+        channel_in (int): Number of input channels.
+        channel_out (int): Number of output channels.
+        kernel_size (int): Size of the convolutional kernel.
+        stride (int): Stride of the convolution.
+        padding (int): Padding for the convolution.
+
+        Returns:
+        nn.Sequential: Sequential block containing ConvTranspose2d, BatchNorm2d, and ReLU layers.
+        """
         return nn.Sequential(
             nn.ConvTranspose2d(channel_in, channel_out, kernel_size, stride, padding, bias=False),
             nn.BatchNorm2d(channel_out),
             nn.ReLU(True),  # ReLU activation
         )
 
-    # Forward pass through the generator
     def forward(self, x):
+        """
+        Forward pass through the Generator.
+
+        Parameters:
+        x (torch.Tensor): Input tensor (latent vector).
+
+        Returns:
+        torch.Tensor: Output tensor (generated image).
+        """
         return self.generator(x)
 
 
-# Function to initialize the weights of the model
 def initialize_weights(model):
+    """
+    Initialize the weights of the model.
+
+    Parameters:
+    model (nn.Module): The model to initialize.
+    """
     for m in model.modules():
         if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
             nn.init.normal_(m.weight, 0.0, 0.02)
 
 
-# Function to test the Discriminator and Generator
 def test():
+    """
+    Test the Discriminator and Generator models to ensure they produce the expected output shapes.
+    """
     # Define the dimensions for testing
     N, channels, height, width = 8, 3, 64, 64
     z_dim = 100  # Latent vector size for generator
@@ -89,6 +151,7 @@ def test():
     # Print success message if all assertions pass
     print('success')
 
-# Run the test function
+
 if __name__ == "__main__":
+    # Run the test function if the script is executed directly
     test()
