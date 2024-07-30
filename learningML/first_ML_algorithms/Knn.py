@@ -72,22 +72,6 @@ class DiabetesPredictor:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == '__main__':
     # Usage
     DiabetesPredictor = DiabetesPredictor(
