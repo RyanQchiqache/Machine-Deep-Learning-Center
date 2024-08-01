@@ -14,14 +14,14 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.discriminator = nn.Sequential(
             # Initial convolutional layer
-            nn.Conv2d(channel_image, feature_channel, 4, 2, 1, bias=False),  # 32x32 -> 16x16 or 64x64 -> 32x32
+            nn.Conv2d(channel_image, feature_channel, 4, 2, 1, bias=False),     # 64x64 -> 32x32
             nn.LeakyReLU(0.2),
             # Adding additional convolutional blocks
-            self.block_(feature_channel, feature_channel * 2, 4, 2, 1),
-            self.block_(feature_channel * 2, feature_channel * 4, 4, 2, 1),
-            self.block_(feature_channel * 4, feature_channel * 8, 4, 2, 1),
+            self.block_(feature_channel, feature_channel * 2, 4, 2, 1),         # 32x32 -> 16x16
+            self.block_(feature_channel * 2, feature_channel * 4, 4, 2, 1),     # 16x16 -> 8x8
+            self.block_(feature_channel * 4, feature_channel * 8, 4, 2, 1),     # 8x8 -> 4x4
             # Final convolutional layer to produce a single output
-            nn.Conv2d(feature_channel * 8, 1, 4, 2, 0, bias=False),
+            nn.Conv2d(feature_channel * 8, 1, 4, 2, 0, bias=False),  # 4x4 -> 1x1
             nn.Sigmoid()
         )
 
@@ -66,15 +66,10 @@ def test_discriminator():
     """
     Test the Discriminator model to ensure it produces the expected output shapes.
     """
-    N, channels, height, width = 8, 3, 32, 32  # For CIFAR-10
+    N, channels, height, width = 8, 3, 64, 64  # For larger input size
     t = torch.randn(N, channels, height, width)
     discriminator = Discriminator(channels, 8)
     print(discriminator)
-    output = discriminator(t)
-    print(f"Output shape: {output.shape}")
-
-    N, channels, height, width = 8, 3, 64, 64  # For larger input size
-    t = torch.randn(N, channels, height, width)
     output = discriminator(t)
     print(f"Output shape: {output.shape}")
 
@@ -135,7 +130,6 @@ class Generator(nn.Module):
         """
         return self.generator(x)
 
-
 def initialize_weights(model):
     """
     Initialize the weights of the model.
@@ -146,7 +140,6 @@ def initialize_weights(model):
     for m in model.modules():
         if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
             nn.init.normal_(m.weight, 0.0, 0.02)
-
 
 def test():
     """
@@ -160,6 +153,7 @@ def test():
     t = torch.randn(N, channels, height, width)
     discriminator = Discriminator(channels, 8)
     initialize_weights(discriminator)
+
     # Ensure the discriminator output shape is as expected
     assert discriminator(t).shape == (N, 1, 1, 1)
 
@@ -167,13 +161,12 @@ def test():
     generator = Generator(z_dim, channels, 8)
     initialize_weights(generator)
     s = torch.randn(N, z_dim, 1, 1)
+
     # Ensure the generator output shape is as expected
     assert generator(s).shape == (N, channels, height, width)
 
     # Print success message if all assertions pass
     print('success')
 
-
 if __name__ == "__main__":
-    # Run the test function if the script is executed directly
     test()
