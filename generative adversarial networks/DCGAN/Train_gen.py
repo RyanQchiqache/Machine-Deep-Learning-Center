@@ -11,9 +11,32 @@ import os
 import time
 import signal
 import sys
+import logging
+import colorlog
+
+def setup_logger():
+    """Setup logger with colorlog."""
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(colorlog.ColoredFormatter(
+        '%(log_color)s%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        log_colors={
+            'DEBUG': 'cyan',
+            'INFO': 'green',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'bold_red',
+        },
+    ))
+    logger = colorlog.getLogger()
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    return logger
+
+logger = setup_logger()
 
 def signal_handler(sig, frame):
-    print('You pressed Ctrl+C! Saving logs and exiting...')
+    logger.info('You pressed Ctrl+C! Saving logs and exiting...')
     writer_real.close()
     writer_fake.close()
     sys.exit(0)
@@ -27,24 +50,25 @@ def main():
     """
     # Set device to GPU if available, otherwise use CPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
 
     # Hyperparameters
-    LEARNING_RATE = 2e-4
-    BATCH_SIZE = 32  # Reduced batch size for debugging
-    IMAGE_SIZE = 64  # Size to which images will be resized
-    CHANNELS_IMAGE = 1  # Number of channels in the input image (e.g., 1 for grayscale, 3 for RGB)
-    Z_DIM = 100  # Dimensionality of the latent vector (input to the generator)
-    EPOCHS = 5
-    FEATURES_DISC = 64  # Number of features in the discriminator
-    FEATURES_GEN = 64  # Number of features in the generator
+    LEARNING_RATE = 2e-4  # seen in most GAN models
+    BATCH_SIZE = 64       # augmenting batch to try out
+    IMAGE_SIZE = 64       # Size to which images will be resized
+    CHANNELS_IMAGE = 1    # Number of channels in the input image (e.g., 1 for grayscale, 3 for RGB)
+    Z_DIM = 100           # Dimensionality of the latent vector (input to the generator)
+    EPOCHS = 5           # Number of epochs
+    FEATURES_DISC = 64    # Number of features in the discriminator
+    FEATURES_GEN = 64     # Number of features in the generator
+    BETA1 = 0.5           # For Adam optimizer
 
     # Define image transformations
     transform = transforms.Compose(
         [
-            transforms.Resize((IMAGE_SIZE)),  # Resize images to the specified size
-            transforms.ToTensor(),  # Convert images to PyTorch tensors
-            transforms.Normalize(  # Normalize images to the range [-1, 1]
+            transforms.Resize((IMAGE_SIZE)),           # Resize images to the specified size
+            transforms.ToTensor(),                     # Convert images to PyTorch tensors
+            transforms.Normalize(                      # Normalize images to the range [-1, 1]
                 [0.5 for _ in range(CHANNELS_IMAGE)],  # Mean normalization value for each channel
                 [0.5 for _ in range(CHANNELS_IMAGE)]   # Standard deviation normalization value for each channel
             ),
@@ -54,14 +78,14 @@ def main():
     # Dataset and DataLoader
     try:
         dataset = datasets.MNIST(
-            root="dataset/",  # Root directory of the dataset
-            train=True,  # Specify training set
+            root="dataset/",      # Root directory of the dataset
+            train=True,           # Specify training set
             transform=transform,  # Apply defined transformations
-            download=True,  # Download dataset if not available locally
+            download=True,        # Download dataset if not available locally
         )
-        print("Dataset loaded successfully.")
+        logger.info("Dataset loaded successfully.")
     except Exception as e:
-        print(f"Error downloading dataset: {e}")
+        logger.error(f"Error downloading dataset: {e}")
         return
 
     dataloader = DataLoader(
@@ -70,7 +94,7 @@ def main():
         shuffle=True,
         num_workers=0  # Start with 0 workers
     )
-    print(f"Dataloader initialized with batch size {BATCH_SIZE}.")
+    logger.info(f"Dataloader initialized with batch size {BATCH_SIZE}.")
 
     # Initialize the Discriminator and Generator models
     gen = Generator(Z_DIM, CHANNELS_IMAGE, FEATURES_GEN).to(device)
@@ -79,16 +103,16 @@ def main():
     # Initialize weights
     initialize_weights(gen)
     initialize_weights(disc)
-    print("Models initialized and weights set.")
+    logger.info("Models initialized and weights set.")
 
     # Define optimizers for both models
-    optimizer_gen = optim.Adam(gen.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
-    optimizer_disc = optim.Adam(disc.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
-    print("Optimizers defined.")
+    optimizer_gen = optim.Adam(gen.parameters(), lr=LEARNING_RATE, betas=(BETA1, 0.999))
+    optimizer_disc = optim.Adam(disc.parameters(), lr=LEARNING_RATE, betas=(BETA1, 0.999))
+    logger.info("Optimizers defined.")
 
     # Loss function (Binary Cross Entropy)
     criterion = nn.BCELoss()
-    print("Loss function defined.")
+    logger.info("Loss function defined.")
 
     # For logging to TensorBoard
     global writer_real, writer_fake  # Make writers global to access them in the signal handler
@@ -99,44 +123,56 @@ def main():
     # Create directory for saving models
     checkpoint_dir = "checkpoints"
     os.makedirs(checkpoint_dir, exist_ok=True)
-    print(f"Checkpoints directory created at {checkpoint_dir}.")
+    logger.info(f"Checkpoints directory created at {checkpoint_dir}.")
 
     # Fixed noise for consistent evaluation
     fixed_noise = torch.randn(32, Z_DIM, 1, 1).to(device)
-    print("Fixed noise generated for evaluation.")
+    logger.info("Fixed noise generated for evaluation.")
 
     # Training Loop
-    print("Starting training...")
+    logger.info("Starting training...")
     for epoch in range(EPOCHS):
-        print(f"Starting epoch {epoch}")
+        logger.info(f"Starting epoch {epoch}")
         epoch_start_time = time.time()
         for batch_idx, (real, _) in enumerate(dataloader):
-            print(f"Processing batch {batch_idx}")
+            logger.debug(f"Processing batch {batch_idx}")
             batch_start_time = time.time()
             real = real.to(device)
             noise = torch.randn(BATCH_SIZE, Z_DIM, 1, 1).to(device)
             fake = gen(noise)
 
             # Train Discriminator: max log(D(x)) + log(1 - D(G(z)))
+            ## Discriminator update##
+            # Forward pass fake batch through Discriminator
             disc_real = disc(real).reshape(-1)
             loss_disc_real = criterion(disc_real, torch.ones_like(disc_real))  # Loss for real data
+
+            # Forward pass real batch through Discriminator
             disc_fake = disc(fake.detach()).reshape(-1)
             loss_disc_fake = criterion(disc_fake, torch.zeros_like(disc_fake))  # Loss for fake data
+
+            #Total Discriminator loss
             loss_disc = (loss_disc_real + loss_disc_fake) / 2  # Combined loss
-            disc.zero_grad()
-            loss_disc.backward()
-            optimizer_disc.step()
+
+            # Backpropagation for Discriminator
+            disc.zero_grad() # Zero the gradients
+            loss_disc.backward() # Backpropagate the loss
+            optimizer_disc.step() # Update the weights
 
             # Train Generator: min log(1 - D(G(z))) <-> max log(D(G(z)))
+            ### Generator Update ###
+            # Forward pass fake batch through Discriminator again, but do not detach this time
             output = disc(fake).reshape(-1)
             loss_gen = criterion(output, torch.ones_like(output))  # Generator loss
+
+            # Backpropagation for Generator
             gen.zero_grad()
             loss_gen.backward()
             optimizer_gen.step()
 
-            # Print losses and log to TensorBoard
+            # Print losses and log to TensorBoard or Logging to TensorBoard
             if batch_idx % 100 == 0:
-                print(
+                logger.info(
                     f"Epoch [{epoch}/{EPOCHS}] Batch {batch_idx}/{len(dataloader)} "
                     f"Loss D: {loss_disc:.4f}, loss G: {loss_gen:.4f}, "
                     f"Batch Time: {time.time() - batch_start_time:.2f} seconds"
@@ -161,17 +197,17 @@ def main():
                 step += 1
 
         epoch_duration = time.time() - epoch_start_time
-        print(f"Epoch [{epoch}/{EPOCHS}] completed in {epoch_duration:.2f} seconds.")
+        logger.info(f"Epoch [{epoch}/{EPOCHS}] completed in {epoch_duration:.2f} seconds.")
 
         # Save the model checkpoints
         torch.save(gen.state_dict(), f"{checkpoint_dir}/generator_epoch_{epoch}.pth")
         torch.save(disc.state_dict(), f"{checkpoint_dir}/discriminator_epoch_{epoch}.pth")
-        print(f"Model checkpoints saved for epoch {epoch}.")
+        logger.info(f"Model checkpoints saved for epoch {epoch}.")
 
     # Close the TensorBoard writers
     writer_real.close()
     writer_fake.close()
-    print("Training completed and TensorBoard writers closed.")
+    logger.info("Training completed and TensorBoard writers closed.")
 
 if __name__ == '__main__':
     main()
