@@ -14,7 +14,7 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.discriminator = nn.Sequential(
             # Initial convolutional layer
-            nn.Conv2d(channel_image, feature_channel, 4, 2, 1, bias=False),
+            nn.Conv2d(channel_image, feature_channel, 4, 2, 1, bias=False),  # 32x32 -> 16x16 or 64x64 -> 32x32
             nn.LeakyReLU(0.2),
             # Adding additional convolutional blocks
             self.block_(feature_channel, feature_channel * 2, 4, 2, 1),
@@ -55,8 +55,30 @@ class Discriminator(nn.Module):
         Returns:
         torch.Tensor: Output tensor after passing through the discriminator.
         """
-        return self.discriminator(x)
+        print(f"Input: {x.shape}")
+        for layer in self.discriminator:
+            x = layer(x)
+            print(f"After layer {layer}: {x.shape}")
+        return x
 
+# Testing the modified Discriminator
+def test_discriminator():
+    """
+    Test the Discriminator model to ensure it produces the expected output shapes.
+    """
+    N, channels, height, width = 8, 3, 32, 32  # For CIFAR-10
+    t = torch.randn(N, channels, height, width)
+    discriminator = Discriminator(channels, 8)
+    print(discriminator)
+    output = discriminator(t)
+    print(f"Output shape: {output.shape}")
+
+    N, channels, height, width = 8, 3, 64, 64  # For larger input size
+    t = torch.randn(N, channels, height, width)
+    output = discriminator(t)
+    print(f"Output shape: {output.shape}")
+
+test_discriminator()
 
 # Define the Generator network
 class Generator(nn.Module):
