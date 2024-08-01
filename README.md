@@ -12,6 +12,7 @@ The repository is meticulously organized into directories, each focusing on dist
 
 1. **cnn/**: Dive into Convolutional Neural Networks (CNNs) with detailed examples and implementations.
 2. **generative adversarial networks/DCGAN/**: Uncover the power of Deep Convolutional Generative Adversarial Networks (DCGANs) with code and comprehensive explanations.
+   - **Paper:** [Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks](https://arxiv.org/abs/1511.06434)
 3. **learningML/**: Explore a broad spectrum of basic to intermediate machine learning concepts and techniques.
 4. **perceptron/**: Understand the fundamentals of the perceptron algorithm, a cornerstone of neural networks.
 5. **.gitignore**: Lists files and directories to be ignored by git.
