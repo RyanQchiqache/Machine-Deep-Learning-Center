@@ -45,6 +45,38 @@ To embark on your journey with this repository, follow these steps:
     ```sh
     jupyter notebook
     ```
+   
+## 🖥️ Creating a Virtual Environment (venv)
+
+To ensure a clean and isolated environment for your project, it's recommended to use a Python virtual environment. Follow these steps to create and activate a virtual environment:
+
+1. **Create a virtual environment**:
+    ```sh
+    python -m venv my_env
+    ```
+   Here, `my_env` is the name of your virtual environment directory.
+
+2. **Activate the virtual environment**:
+
+   - On Windows:
+     ```sh
+     .\my_env\Scripts\activate
+     ```
+
+   - On macOS and Linux:
+     ```sh
+     source my_env/bin/activate
+     ```
+
+3. **Install the required libraries** (within the activated virtual environment):
+    ```sh
+    pip install numpy pandas matplotlib scipy scikit-learn tensorflow torch
+    ```
+
+4. **Deactivate the virtual environment** when you're done working:
+    ```sh
+    deactivate
+    ```
 
 ## 📂 Content Details
 
