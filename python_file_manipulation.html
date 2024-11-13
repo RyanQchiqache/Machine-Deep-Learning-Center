@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Python File Manipulation Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #0056b3;
+        }
+        h2 {
+            color: #333;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        code {
+            font-size: 0.95em;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Python File Manipulation Guide</h1>
+<p style="font-size: 1.1em; color: #555; text-align: justify;">
+This guide provides examples of Python functions for various file manipulation tasks, including creating files, converting formats,
+and handling file operations. Each function demonstrates specific capabilities useful for automating workflows and managing files.
+</p>
+
+<h2>1. Create a Text File</h2>
+<pre><code>def create_text_file(file_name, content):
+    with open(file_name, 'w') as file:
+        file.write(content)
+    print(f"Text file '{file_name}' created.")</code></pre>
+
+<h2>2. Create a PDF from Text</h2>
+<pre><code>def create_pdf(file_name, content):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, content)
+    pdf.output(file_name)
+    print(f"PDF file '{file_name}' created.")</code></pre>
+
+<h2>3. Convert an Image to PDF</h2>
+<pre><code>def image_to_pdf(image_path, pdf_path):
+    image = Image.open(image_path)
+    image.convert("RGB").save(pdf_path)
+    print(f"Image '{image_path}' converted to PDF '{pdf_path}'.")</code></pre>
+
+<h2>4. Convert Markdown to PDF</h2>
+<pre><code>def markdown_to_pdf(md_file, pdf_file):
+    with open(md_file, 'r') as file:
+        html_content = markdown.markdown(file.read())
+    create_pdf(pdf_file, html_content)
+    print(f"Markdown file '{md_file}' converted to PDF '{pdf_file}'.")</code></pre>
+
+<h2>5. Create a URL Shortcut</h2>
+<pre><code>def create_url_shortcut(file_name, url):
+    with open(file_name, 'w') as file:
+        file.write(f"[InternetShortcut]\\nURL={url}\\n")
+    print(f"URL shortcut '{file_name}' created.")</code></pre>
+
+<h2>6. Create a CSV File</h2>
+<pre><code>def create_csv_file(file_name, data, headers=None):
+    with open(file_name, 'w', newline='') as file:
+        writer = csv.writer(file)
+        if headers:
+            writer.writerow(headers)
+        writer.writerows(data)
+    print(f"CSV file '{file_name}' created.")</code></pre>
+
+<h2>7. Create a JSON File</h2>
+<pre><code>def create_json_file(file_name, data):
+    with open(file_name, 'w') as file:
+        json.dump(data, file, indent=4)
+    print(f"JSON file '{file_name}' created.")</code></pre>
+
+
+
+</body>
+</html>
