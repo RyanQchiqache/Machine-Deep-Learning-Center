@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Commands Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            position: relative;
+        }
+        .copy-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        h2 {
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Welcome to Your Commands Guide</h1>
+<p style="font-size: 1.2em; color: #555; text-align: justify;">
+Imagine a world where every line of code you need is just a click away. This guide is designed to be your personal command center,
+streamlining your development workflow and empowering you to set up projects, solve problems, and troubleshoot with ease. Whether you're
+creating new virtual environments, managing dependencies, running scripts, or visualizing data, this interactive guide anticipates your needs
+and provides you with the most essential commands at your fingertips. Just click "Copy"!<br><br>
+If you want some file manipulation guidance in Python, click <a href="python_file_manipulation.html" target="_blank" style="color: #007bff; text-decoration: none;">here</a>.
+</p>
+
+<h1>Commands Guide</h1>
+
+<h2>1. Create a New Virtual Environment</h2>
+<p>To isolate dependencies for each project or problem, start by creating a new virtual environment:</p>
+<pre>
+<code># Create a new virtual environment in a specified directory (e.g., "env_name")
+python3 -m venv env_name</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>2. Activate the Virtual Environment</h2>
+<p>Activate the virtual environment for your current shell session:</p>
+<p><strong>macOS/Linux:</strong></p>
+<pre>
+<code>source env_name/bin/activate</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<p><strong>Windows:</strong></p>
+<pre>
+<code>.\env_name\Scripts\activate</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<p>To deactivate:</p>
+<pre>
+<code>deactivate</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>3. Install Dependencies from requirements.txt</h2>
+<p>For projects with predefined dependencies, install directly from a <code>requirements.txt</code> file:</p>
+<pre>
+<code>pip install -r requirements.txt</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>4. Create a requirements.txt File for Current Environment</h2>
+<p>To capture all installed packages for sharing or future use:</p>
+<pre>
+<code>pip freeze > requirements.txt</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>5. Install Common Packages for Machine Learning and Scientific Computing</h2>
+<p>Here’s a quick setup to install common libraries:</p>
+<pre>
+<code>pip install numpy pandas matplotlib scipy scikit-learn tensorflow torch</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>6. Running Python Scripts</h2>
+<p>To run a Python script, activate the environment and then use:</p>
+<pre>
+<code>python script_name.py</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>7. Troubleshooting Dependency Conflicts</h2>
+<p>If you encounter dependency conflicts:</p>
+<ol>
+    <li><strong>Check for conflicts:</strong></li>
+    <pre><code>pip check</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+    <li><strong>Upgrade or Downgrade Specific Packages:</strong></li>
+    <pre><code>pip install package_name==version</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+</ol>
+
+<h2>8. Problem-Solving with Common Libraries</h2>
+
+<p><strong>Using Scipy's dual_annealing for Optimization Problems:</strong></p>
+<pre>
+<code>from scipy.optimize import dual_annealing
+# Define and run your dual_annealing function here</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<p><strong>Using Pandas for Data Manipulation:</strong></p>
+<pre>
+<code>import pandas as pd
+# Load data
+df = pd.read_csv('data.csv')
+# Inspect data
+print(df.head())
+# Manipulate data
+df['new_col'] = df['col1'] + df['col2']</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<p><strong>Visualizing with Matplotlib:</strong></p>
+<pre>
+<code>import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [4, 5, 6])
+plt.xlabel('X-axis')
+plt.ylabel('Y-axis')
+plt.title('Sample Plot')
+plt.show()</code>
+<button class="copy-button" onclick="copyText(this)">Copy</button>
+</pre>
+
+<h2>9. Common Commands for Package Management</h2>
+
+<p><strong>List Installed Packages:</strong></p>
+<pre><code>pip list</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<p><strong>Update a Package:</strong></p>
+<pre><code>pip install --upgrade package_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<p><strong>Uninstall a Package:</strong></p>
+<pre><code>pip uninstall package_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>10. Quick Virtual Environment Clean-Up</h2>
+<p>To quickly clean up and remove the virtual environment if it’s no longer needed:</p>
+<pre><code>rm -rf env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>10. Quick Virtual Environment Clean-Up</h2>
+<p>To quickly clean up and remove the virtual environment if it’s no longer needed:</p>
+<pre><code>rm -rf env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>11. Managing Different Python Versions in Virtual Environments</h2>
+<p>If you have multiple versions of Python installed, specify the Python version when creating the virtual environment:</p>
+<pre><code>python3.9 -m venv env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>12. Jupyter Notebook Setup in Virtual Environment</h2>
+<p>To use Jupyter notebooks within a virtual environment:</p>
+<ol>
+    <li>Install Jupyter:</li>
+    <pre><code>pip install jupyter</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+    <li>Start Jupyter Notebook:</li>
+    <pre><code>jupyter notebook</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+</ol>
+
+<h2>13. Adding Virtual Environment to Jupyter Notebooks</h2>
+<ol>
+    <li>Install <code>ipykernel</code> in the virtual environment:</li>
+    <pre><code>pip install ipykernel</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+    <li>Add the environment as a new Jupyter kernel:</li>
+    <pre><code>python -m ipykernel install --user --name=env_name --display-name "Python (env_name)"</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+</ol>
+
+<h2>14. Creating Reusable Functions for Problem-Solving</h2>
+<p>Store commonly used functions in a Python file (e.g., <code>utils.py</code>). For example, common matrix or data preprocessing functions.</p>
+<p>Import them in your projects:</p>
+<pre><code>from utils import function_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>15. Debugging and Inspecting Code</h2>
+<p>Use Python’s built-in <code>pdb</code> module to add breakpoints:</p>
+<pre><code>import pdb; pdb.set_trace()</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>16. Generating Random Data for Testing</h2>
+
+<p><strong>Using Numpy:</strong></p>
+<pre><code>import numpy as np
+random_data = np.random.randint(0, 100, size=(10, 5))</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<p><strong>Using Scikit-Learn for Synthetic Data:</strong></p>
+<pre><code>from sklearn.datasets import make_classification
+X, y = make_classification(n_samples=100, n_features=5)</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+<h2>17. Sometimes solves installing problems</h2>
+<p>For example, if you’re facing issues with installing <code>mlrose</code>, try the following:</p>
+<pre><code>SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True pip install mlrose</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
+
+
+<script>
+    function copyText(button) {
+        const code = button.previousElementSibling.textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            button.innerText = "Copied!";
+            setTimeout(() => button.innerText = "Copy", 2000);
+        }).catch(err => console.error('Error copying text: ', err));
+    }
+</script>
+
+</body>
+</html>
