@@ -4,43 +4,113 @@
     <meta charset="UTF-8">
     <title>Commands Guide</title>
     <style>
+        /* General Body Styling */
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            line-height: 1.8;
+            color: #e0e0e0;
+            max-width: 900px;
             margin: auto;
             padding: 20px;
+            background: linear-gradient(135deg, #1f1c2c 0%, #928dab 100%);
+            animation: fadeInBody 1.5s ease-in-out;
         }
+
+        /* Animation for Body Load */
+        @keyframes fadeInBody {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Header Styles */
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            color: #f4f4f4;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            transition: color 0.5s ease;
+        }
+
+        /* Hover effect on H1 */
+        h1:hover {
+            color: #00bcd4;
+        }
+
+        h2 {
+            color: #e0e0e0;
+            font-size: 1.8em;
+            border-bottom: 1px solid #555;
+            padding-bottom: 5px;
+            margin-top: 30px;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Code Block Styling */
         pre {
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 5px;
-            position: relative;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #cfe3fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
+
+        /* Transform effect for Pre on Hover */
+        pre:hover {
+            transform: scale(1.02);
+            box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Copy Button Styling */
         .copy-button {
             position: absolute;
             top: 10px;
             right: 10px;
-            padding: 5px 10px;
-            background: #007bff;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #6dd5ed 0%, #2193b0 100%);
             color: #fff;
+            font-size: 0.9em;
+            font-weight: bold;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            transition: background 0.3s ease;
         }
-        h2 {
-            color: #333;
+
+        /* Hover effect on Copy Button */
+        .copy-button:hover {
+            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%);
         }
-        h1 {
+
+        /* Footer Link for Back to Main Guide */
+        .footer-link {
             text-align: center;
-            color: #0056b3;
+            margin-top: 40px;
+            font-size: 1.1em;
+            color: #a6a6a6;
+            text-decoration: none;
+            border: 1px solid #a6a6a6;
+            padding: 10px 20px;
+            border-radius: 5px;
+            transition: color 0.3s, border 0.3s;
         }
+
+        /* Hover effect on Footer Link */
+        .footer-link:hover {
+            color: #f4f4f4;
+            border-color: #f4f4f4;
+        }
+
     </style>
 </head>
+
 <body>
 
 <h1>Welcome to Your Commands Guide</h1>
-<p style="font-size: 1.2em; color: #555; text-align: justify;">
+<p style="font-size: 1.2em; color: #f1e7e7; text-align: justify;">
 Imagine a world where every line of code you need is just a click away. This guide is designed to be your personal command center,
 streamlining your development workflow and empowering you to set up projects, solve problems, and troubleshoot with ease. Whether you're
 creating new virtual environments, managing dependencies, running scripts, or visualizing data, this interactive guide anticipates your needs
@@ -157,10 +227,6 @@ plt.show()</code>
 
 <p><strong>Uninstall a Package:</strong></p>
 <pre><code>pip uninstall package_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
-
-<h2>10. Quick Virtual Environment Clean-Up</h2>
-<p>To quickly clean up and remove the virtual environment if it’s no longer needed:</p>
-<pre><code>rm -rf env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
 <h2>10. Quick Virtual Environment Clean-Up</h2>
 <p>To quickly clean up and remove the virtual environment if it’s no longer needed:</p>
