@@ -103,7 +103,7 @@ class DigitRecognizer:
 
         # Define other callbacks for early stopping and model checkpointing
         early_stopping_cb = callbacks.EarlyStopping(patience=3, restore_best_weights=True)
-        model_checkpoint_cb = callbacks.ModelCheckpoint('best_model.h5', save_best_only=True)
+        model_checkpoint_cb = callbacks.ModelCheckpoint('models/best_model.h5', save_best_only=True)
 
         # Use data augmentation if specified
         if use_augmentation:
