@@ -1,6 +1,6 @@
 import os
 from unittest import TestCase
-from learningML.symolic_programming import Symbolisch_debug
+from learningML.nlp_programmimg import Symbolisch_debug
 
 
 class SymbolischDebugTest(TestCase):
