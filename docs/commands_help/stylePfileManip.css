@@ -1,0 +1,212 @@
+/* Cyberpunk Futuristic Styling */
+:root {
+    --neon-cyan: #0ff;
+    --neon-purple: #a020f0;
+    --matrix-green: #00ff00;
+    --cyber-black: #0a0a0a;
+    --hud-yellow: #ffd700;
+}
+
+/* Cyberpunk Background */
+body {
+    font-family: 'Oxanium', 'Courier New', monospace;
+    line-height: 1.8;
+    color: #e0e0e0;
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+    background:
+        radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%),
+        repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 255, 255, 0.1) 2px,
+            rgba(0, 255, 255, 0.1) 4px
+        );
+    animation: matrixScan 20s linear infinite;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Matrix-Like Background Effect */
+@keyframes matrixScan {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 100%; }
+}
+
+/* Subtle Grid Overlay */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        linear-gradient(0deg,
+            transparent 24%,
+            rgba(0, 255, 255, 0.05) 25%,
+            rgba(0, 255, 255, 0.05) 26%,
+            transparent 27%,
+            transparent 74%,
+            rgba(0, 255, 255, 0.05) 75%,
+            rgba(0, 255, 255, 0.05) 76%,
+            transparent 77%
+        ),
+        linear-gradient(90deg,
+            transparent 24%,
+            rgba(0, 255, 255, 0.05) 25%,
+            rgba(0, 255, 255, 0.05) 26%,
+            transparent 27%,
+            transparent 74%,
+            rgba(0, 255, 255, 0.05) 75%,
+            rgba(0, 255, 255, 0.05) 76%,
+            transparent 77%
+        );
+    background-size: 4em 4em;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Cyberpunk Header */
+h1 {
+    text-align: center;
+    font-size: 3em;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px var(--neon-cyan);
+    margin: 30px 0;
+    animation: textGlow 2s ease-in-out infinite alternate;
+}
+
+/* Neon Glow Animation */
+@keyframes textGlow {
+    from { text-shadow: 0 0 10px var(--neon-cyan); }
+    to { text-shadow: 0 0 20px var(--neon-cyan), 0 0 30px var(--neon-cyan); }
+}
+
+/* Subheadings */
+h2 {
+    color: var(--neon-purple);
+    font-size: 2em;
+    border-left: 4px solid var(--neon-purple);
+    padding: 10px 20px;
+    margin: 40px 0 20px;
+    background: linear-gradient(90deg, rgba(160, 32, 240, 0.1), transparent);
+    text-shadow: 0 0 8px rgba(160, 32, 240, 0.5);
+}
+
+/* Code Block Styling */
+pre {
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid var(--neon-cyan);
+    border-radius: 4px;
+    padding: 20px;
+    margin: 25px 0;
+    position: relative;
+    overflow-x: auto;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+/* Hover Effect for Code Blocks */
+pre:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 30px var(--neon-cyan);
+}
+
+/* Cyberpunk Terminal-Style Text */
+code {
+    color: var(--matrix-green);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9em;
+    text-shadow: 0 0 5px var(--matrix-green);
+}
+
+/* Copy Button */
+.copy-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 8px 16px;
+    background: rgba(0, 255, 255, 0.1);
+    color: var(--neon-cyan);
+    border: 1px solid var(--neon-cyan);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Oxanium', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Copy Button Hover */
+.copy-button:hover {
+    background: var(--neon-cyan);
+    color: #000;
+    box-shadow: 0 0 15px var(--neon-cyan);
+}
+
+/* Cyberpunk Footer Button */
+.footer-link {
+    text-align: center;
+    display: block;
+    width: fit-content;
+    margin: 40px auto;
+    padding: 10px 20px;
+    font-size: 1.1em;
+    color: var(--hud-yellow);
+    border: 2px solid var(--hud-yellow);
+    text-decoration: none;
+    transition: all 0.3s;
+    text-transform: uppercase;
+}
+
+/* Footer Button Hover */
+.footer-link:hover {
+    background: var(--hud-yellow);
+    color: #000;
+    box-shadow: 0 0 10px var(--hud-yellow);
+}
+
+/* Terminal-Like Flicker Effect */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        to bottom,
+        transparent 50%,
+        rgba(0, 255, 255, 0.05) 51%,
+        transparent 52%
+    );
+    animation: scanline 6s linear infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+}
+
+/* Cyberpunk Terminal Effect */
+.terminal-effect {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 255, 255, 0.05) 0px,
+        rgba(0, 255, 255, 0.05) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    pointer-events: none;
+    z-index: -1;
+}

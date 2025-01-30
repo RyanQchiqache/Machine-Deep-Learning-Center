@@ -2,129 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Commands Guide</title>
-    <style>
-        /* General Body Styling */
-        body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            line-height: 1.8;
-            color: #e0e0e0;
-            max-width: 900px;
-            margin: auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #1f1c2c 0%, #928dab 100%);
-            animation: fadeInBody 1.5s ease-in-out;
-        }
-
-        /* Animation for Body Load */
-        @keyframes fadeInBody {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        /* Header Styles */
-        h1 {
-            text-align: center;
-            font-size: 2.5em;
-            color: #f4f4f4;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-            transition: color 0.5s ease;
-        }
-
-        /* Hover effect on H1 */
-        h1:hover {
-            color: #00bcd4;
-        }
-
-        h2 {
-            color: #e0e0e0;
-            font-size: 1.8em;
-            border-bottom: 1px solid #555;
-            padding-bottom: 5px;
-            margin-top: 30px;
-            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Code Block Styling */
-        pre {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: #cfe3fc;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            overflow-x: auto;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.4);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        /* Transform effect for Pre on Hover */
-        pre:hover {
-            transform: scale(1.02);
-            box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.6);
-        }
-
-        /* Copy Button Styling */
-        .copy-button {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 8px 16px;
-            background: linear-gradient(135deg, #6dd5ed 0%, #2193b0 100%);
-            color: #fff;
-            font-size: 0.9em;
-            font-weight: bold;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-
-        /* Hover effect on Copy Button */
-        .copy-button:hover {
-            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%);
-        }
-
-        /* Footer Link for Back to Main Guide */
-        .footer-link {
-            text-align: center;
-            margin-top: 40px;
-            font-size: 1.1em;
-            color: #a6a6a6;
-            text-decoration: none;
-            border: 1px solid #a6a6a6;
-            padding: 10px 20px;
-            border-radius: 5px;
-            transition: color 0.3s, border 0.3s;
-        }
-
-        /* Hover effect on Footer Link */
-        .footer-link:hover {
-            color: #f4f4f4;
-            border-color: #f4f4f4;
-        }
-
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Commands Guide</title>
+    <link rel="stylesheet" href="styleCommands.css">
 </head>
-
 <body>
 
 <h1>Welcome to Your Commands Guide</h1>
 <p style="font-size: 1.2em; color: #f1e7e7; text-align: justify;">
-This guide is designed to be your personal command center,
-streamlining your development workflow and empowering you to set up projects, solve problems, and troubleshoot with ease. Whether you're
-creating new virtual environments, managing dependencies, running scripts, or visualizing data, this interactive guide anticipates your needs
-and provides you with the most essential commands at your fingertips. Just click "Copy"!<br><br>
-If you want some file manipulation guidance in Python, click <a href="python_file_manipulation.html" target="_blank" style="color: #007bff; text-decoration: none;">here</a>.
+    This guide is designed to streamline your development workflow, empowering you to set up projects, solve problems, and troubleshoot with ease. Whether you're creating virtual environments, managing dependencies, running scripts, or visualizing data, this interactive guide provides essential commands at your fingertips. Just click "Copy"!<br><br>
+    For Python file manipulation guidance, visit <a href="python_file_manipulation.html" target="_blank">this link</a>.
 </p>
 
 <h1>Commands Guide</h1>
 
 <h2>1. Create a New Virtual Environment</h2>
-<p>To isolate dependencies for each project or problem, start by creating a new virtual environment:</p>
+<p>To isolate dependencies for each project, create a new virtual environment:</p>
 <pre>
-<code># Create a new virtual environment in a specified directory (e.g., "env_name")
-python3 -m venv env_name</code>
+<code>python3 -m venv env_name</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
@@ -149,45 +44,44 @@ python3 -m venv env_name</code>
 </pre>
 
 <h2>3. Install Dependencies from requirements.txt</h2>
-<p>For projects with predefined dependencies, install directly from a <code>requirements.txt</code> file:</p>
+<p>Install dependencies from a <code>requirements.txt</code> file:</p>
 <pre>
 <code>pip install -r requirements.txt</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
-<h2>4. Create a requirements.txt File for Current Environment</h2>
-<p>To capture all installed packages for sharing or future use:</p>
+<h2>4. Create a requirements.txt File</h2>
+<p>Capture all installed packages for sharing or future use:</p>
 <pre>
 <code>pip freeze > requirements.txt</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
-<h2>5. Install Common Packages for Machine Learning and Scientific Computing</h2>
-<p>Here’s a quick setup to install common libraries:</p>
+<h2>5. Install Common Machine Learning Packages</h2>
+<p>Quickly install essential libraries:</p>
 <pre>
 <code>pip install numpy pandas matplotlib scipy scikit-learn tensorflow torch</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
 <h2>6. Running Python Scripts</h2>
-<p>To run a Python script, activate the environment and then use:</p>
+<p>Run a Python script after activating the environment:</p>
 <pre>
 <code>python script_name.py</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
 <h2>7. Troubleshooting Dependency Conflicts</h2>
-<p>If you encounter dependency conflicts:</p>
+<p>Resolve dependency conflicts with these steps:</p>
 <ol>
     <li><strong>Check for conflicts:</strong></li>
     <pre><code>pip check</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
-    <li><strong>Upgrade or Downgrade Specific Packages:</strong></li>
+    <li><strong>Upgrade or downgrade specific packages:</strong></li>
     <pre><code>pip install package_name==version</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 </ol>
 
 <h2>8. Problem-Solving with Common Libraries</h2>
-
-<p><strong>Using Scipy's dual_annealing for Optimization Problems:</strong></p>
+<p><strong>Using Scipy's dual_annealing for Optimization:</strong></p>
 <pre>
 <code>from scipy.optimize import dual_annealing
 # Define and run your dual_annealing function here</code>
@@ -197,11 +91,8 @@ python3 -m venv env_name</code>
 <p><strong>Using Pandas for Data Manipulation:</strong></p>
 <pre>
 <code>import pandas as pd
-# Load data
 df = pd.read_csv('data.csv')
-# Inspect data
 print(df.head())
-# Manipulate data
 df['new_col'] = df['col1'] + df['col2']</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
@@ -217,8 +108,7 @@ plt.show()</code>
 <button class="copy-button" onclick="copyText(this)">Copy</button>
 </pre>
 
-<h2>9. Common Commands for Package Management</h2>
-
+<h2>9. Package Management Commands</h2>
 <p><strong>List Installed Packages:</strong></p>
 <pre><code>pip list</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
@@ -228,16 +118,16 @@ plt.show()</code>
 <p><strong>Uninstall a Package:</strong></p>
 <pre><code>pip uninstall package_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>10. Quick Virtual Environment Clean-Up</h2>
-<p>To quickly clean up and remove the virtual environment if it’s no longer needed:</p>
+<h2>10. Clean Up Virtual Environment</h2>
+<p>Remove the virtual environment if no longer needed:</p>
 <pre><code>rm -rf env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>11. Managing Different Python Versions in Virtual Environments</h2>
-<p>If you have multiple versions of Python installed, specify the Python version when creating the virtual environment:</p>
+<h2>11. Managing Python Versions</h2>
+<p>Specify the Python version when creating a virtual environment:</p>
 <pre><code>python3.9 -m venv env_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>12. Jupyter Notebook Setup in Virtual Environment</h2>
-<p>To use Jupyter notebooks within a virtual environment:</p>
+<h2>12. Jupyter Notebook Setup</h2>
+<p>Use Jupyter notebooks within a virtual environment:</p>
 <ol>
     <li>Install Jupyter:</li>
     <pre><code>pip install jupyter</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
@@ -245,37 +135,34 @@ plt.show()</code>
     <pre><code>jupyter notebook</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 </ol>
 
-<h2>13. Adding Virtual Environment to Jupyter Notebooks</h2>
+<h2>13. Add Virtual Environment to Jupyter</h2>
 <ol>
-    <li>Install <code>ipykernel</code> in the virtual environment:</li>
+    <li>Install <code>ipykernel</code>:</li>
     <pre><code>pip install ipykernel</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
-    <li>Add the environment as a new Jupyter kernel:</li>
+    <li>Add the environment as a new kernel:</li>
     <pre><code>python -m ipykernel install --user --name=env_name --display-name "Python (env_name)"</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 </ol>
 
-<h2>14. Creating Reusable Functions for Problem-Solving</h2>
-<p>Store commonly used functions in a Python file (e.g., <code>utils.py</code>). For example, common matrix or data preprocessing functions.</p>
-<p>Import them in your projects:</p>
+<h2>14. Reusable Functions</h2>
+<p>Store commonly used functions in a Python file (e.g., <code>utils.py</code>):</p>
 <pre><code>from utils import function_name</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>15. Debugging and Inspecting Code</h2>
-<p>Use Python’s built-in <code>pdb</code> module to add breakpoints:</p>
+<h2>15. Debugging with pdb</h2>
+<p>Use Python’s built-in <code>pdb</code> module for debugging:</p>
 <pre><code>import pdb; pdb.set_trace()</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>16. Generating Random Data for Testing</h2>
-
+<h2>16. Generating Random Data</h2>
 <p><strong>Using Numpy:</strong></p>
 <pre><code>import numpy as np
 random_data = np.random.randint(0, 100, size=(10, 5))</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<p><strong>Using Scikit-Learn for Synthetic Data:</strong></p>
+<p><strong>Using Scikit-Learn:</strong></p>
 <pre><code>from sklearn.datasets import make_classification
 X, y = make_classification(n_samples=100, n_features=5)</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
 
-<h2>17. Sometimes solves installing problems</h2>
-<p>For example, if you’re facing issues with installing <code>mlrose</code>, try the following:</p>
+<h2>17. Resolving Installation Issues</h2>
+<p>For issues with installing <code>mlrose</code>, try:</p>
 <pre><code>SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True pip install mlrose</code><button class="copy-button" onclick="copyText(this)">Copy</button></pre>
-
 
 <script>
     function copyText(button) {
