@@ -6,7 +6,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from Model_gen import Discriminator, Generator, initialize_weights
+from model_gen import Discriminator, Generator, initialize_weights
 import os
 import time
 import signal

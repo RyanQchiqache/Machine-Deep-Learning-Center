@@ -1,6 +1,6 @@
 import os
 from unittest import TestCase
-from learningML.nlp_programmimg import Symbolisch_debug
+from learningML.nlp_programmimg import sym
 
 
 class SymbolischDebugTest(TestCase):
@@ -8,7 +8,7 @@ class SymbolischDebugTest(TestCase):
     def setUp(self):
         # make sure that the path to the folder data corresponds to the correct path on your computer
         path = os.path.join(os.path.dirname(__file__), "ada_lovelace.txt")
-        self.analyzer = Symbolisch_debug(path)
+        self.analyzer = sym(path)
 
     def test_01_numberOfTokens(self):
         # Check if the number of tokens matches an expected value
