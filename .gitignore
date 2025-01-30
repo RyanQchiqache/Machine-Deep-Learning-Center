@@ -134,6 +134,7 @@ cython_debug/
 *.zip
 *.h5
 
+
 # Ignore temporary files
 *.tmp
 *.temp
