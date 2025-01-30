@@ -145,6 +145,8 @@ myenv/
 
 # Ignore all CIFAR-10 dataset files
 gan/DCGAN/dataset/cifar10/cifar-10-batches-py/
+learningML/models/fasttext.model.wv.vectors_ngrams.npy
+
 
 # Ignore all log files inside logs/real and logs/fake
 gan/DCGAN/logs/real/
