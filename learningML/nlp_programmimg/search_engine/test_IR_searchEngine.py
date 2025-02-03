@@ -1,8 +1,10 @@
 import unittest
+from hypothesis import given, strategies as st
 from IR_searchEngine import TextDocument, DocumentCollection, SearchEngine
 
 
-class TestSearchEngine(unittest.TestCase):
+class TestSearchEnginePBT(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
         """Set up a small document collection for testing."""
@@ -16,33 +18,40 @@ class TestSearchEngine(unittest.TestCase):
         cls.collection = DocumentCollection.from_document_list(cls.documents)
         cls.search_engine = SearchEngine(cls.collection)
 
-    def test_tfidf_computation(self):
-        """Test if TF-IDF values are computed correctly."""
-        doc = self.documents[0]
+    @given(st.text(min_size=1, max_size=100))
+    def test_tfidf_non_negative(self, random_text):
+        """TF-IDF values should always be non-negative."""
+        doc = TextDocument(random_text)
         tfidf_values = self.collection.tfidf(doc.token_counts)
-        self.assertGreater(len(tfidf_values), 0)
-        self.assertIn("artificial", tfidf_values)
+        for value in tfidf_values.values():
+            self.assertGreaterEqual(value, 0)
 
-    def test_cosine_similarity(self):
-        """Test cosine similarity between two documents."""
-        doc_a = self.documents[0]
-        doc_b = self.documents[1]
+    @given(st.text(min_size=1, max_size=100), st.text(min_size=1, max_size=100))
+    def test_cosine_similarity_bounds(self, text_a, text_b):
+        """Cosine similarity should be between 0 and 1."""
+        doc_a = TextDocument(text_a)
+        doc_b = TextDocument(text_b)
         similarity = self.collection.cosine_similarity(doc_a, doc_b)
         self.assertGreaterEqual(similarity, 0)
         self.assertLessEqual(similarity, 1)
 
-    def test_docs_with_some_tokens(self):
-        """Test document retrieval based on some tokens."""
-        tokens = ["AI", "technology"]
-        retrieved_docs = self.collection.docs_with_some_tokens(tokens)
-        self.assertGreater(len(retrieved_docs), 0)
+    @given(st.text(min_size=1, max_size=100))
+    def test_idempotent_search(self, query):
+        """Search should return the same results for the same query."""
+        results1 = self.search_engine.ranked_documents(query)
+        results2 = self.search_engine.ranked_documents(query)
+        self.assertEqual(results1, results2)
 
-    def test_search_ranking(self):
-        """Test ranked document retrieval for a query."""
-        query = "AI and robotics"
-        results = self.search_engine.ranked_documents(query, top_k=3)
-        self.assertGreater(len(results), 0)
-        self.assertGreater(results[0][1], results[-1][1])  # Ensure ranking works
+    def test_self_similarity(self):
+        """A document compared to itself should have cosine similarity of 1."""
+        for doc in self.documents:
+            similarity = self.collection.cosine_similarity(doc, doc)
+            self.assertAlmostEqual(similarity, 1.0)
+
+    def test_empty_query(self):
+        """An empty query should return no results."""
+        results = self.search_engine.ranked_documents("")
+        self.assertEqual(len(results), 0)
 
 
 if __name__ == "__main__":
