@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from collections import Counter
+from typing import List
 
 
 class TFIDFVectorizer:
@@ -8,7 +9,7 @@ class TFIDFVectorizer:
         self.ifd_dict = {}
         self.vocab = []
 
-    def fit(self, documents):
+    def fit(self, documents: List[str]) -> None:
         """Compute IDF values"""
         tokenized_documents = [doc.lower().split() for doc in documents]
         self.vocab = sorted(set(word for doc in tokenized_documents for word in doc))
@@ -20,7 +21,7 @@ class TFIDFVectorizer:
             for word in self.vocab
         }
 
-    def transform(self, documents):
+    def transform(self, documents: List[str]) -> np.ndarray:
         """Convert documents into a TF-IDF matrix"""
         tokenized_documents = [doc.lower().split() for doc in documents]
         tf_idf_matrix = []
@@ -33,7 +34,7 @@ class TFIDFVectorizer:
 
         return np.array(tf_idf_matrix)
 
-    def fit_transform(self, documents):
+    def fit_transform(self, documents: List[str]) -> np.ndarray:
         """Fit IDF and return TF-IDF matrix"""
         self.fit(documents)
         return self.transform(documents)
