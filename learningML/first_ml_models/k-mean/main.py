@@ -2,15 +2,16 @@ from tfidf import TFIDFVectorizer
 from kmean import KMean
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
+import plotly.express as px
 import numpy as np
+from sklearn.manifold import TSNE
+from scipy.spatial import ConvexHull
+import seaborn as sns
 
 
-def main():
-    """Main function to perform TF-IDF transformation, PCA, K-Means clustering, and visualization."""
-
-    # 📝 Expanded Corpus with Diverse Topics
-    documents = [
+def get_documents():
+    """Returns a dataset of documents grouped into various topics."""
+    return [
         # NLP & AI
         "Natural language processing enables machines to understand human speech.",
         "Text classification is a fundamental NLP task with applications in sentiment analysis.",
@@ -62,43 +63,122 @@ def main():
         "Cancer research aims to develop new treatments for the disease."
     ]
 
-    #  **Step 1: Convert Text to TF-IDF Matrix**
+
+def preprocess_documents(documents):
+    """Converts text into a TF-IDF matrix and applies PCA for dimensionality reduction."""
+    print(" Converting text into TF-IDF matrix...")
     vectorizer = TFIDFVectorizer()
-    tf_idf_matrix = vectorizer.fit_transform(documents)
+    tf_idf_matrix = np.nan_to_num(vectorizer.fit_transform(documents))  # Handle NaN values
 
-    # **Step 2: Fix potential NaN values (important for PCA)**
-    if np.isnan(tf_idf_matrix).any():
-        print("⚠️ Warning: NaN values detected in TF-IDF matrix. Replacing with 0.")
-        tf_idf_matrix = np.nan_to_num(tf_idf_matrix)
-
-    # Step 3: Reduce Dimensionality with PCA**
-    n_components = min(10, tf_idf_matrix.shape[1])  # Ensure PCA components ≤ features
+    print(" Applying PCA for dimensionality reduction...")
+    n_components = min(10, tf_idf_matrix.shape[1])
     pca = PCA(n_components=n_components)
     reduced_tf_idf = pca.fit_transform(tf_idf_matrix)
 
-    # **Step 4: Apply K-Means Clustering**
-    kmeans = KMean(k=6)  # Adjust based on number of topics
-    clusters = kmeans.fit(reduced_tf_idf)
+    return reduced_tf_idf
 
-    # **Step 5: Apply t-SNE for Visualization**
-    perplexity = min(10, len(documents) - 1)  # Ensure valid perplexity
-    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
-    tsne_results = tsne.fit_transform(reduced_tf_idf)
 
-    # **Step 6: Plot Clusters**
-    plt.figure(figsize=(10, 6))
-    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=clusters, cmap='rainbow', alpha=0.7)
-    plt.title("t-SNE Visualization of Document Clusters")
-    plt.xlabel("t-SNE Dimension 1")
-    plt.ylabel("t-SNE Dimension 2")
-    plt.colorbar(scatter, label="Cluster ID")
+def apply_clustering(X, k=6):
+    """Performs K-Means clustering on the reduced TF-IDF matrix."""
+    print(f" Running K-Means clustering with k={k}...")
+    kmeans = KMean(k=k)
+    return kmeans.fit(X)
+
+
+
+
+
+def visualize_clusters_2d(X, clusters):
+    """Uses t-SNE to visualize clusters in 2D space with convex hulls."""
+    print(" Applying t-SNE for 2D visualization...")
+    tsne = TSNE(n_components=2, perplexity=min(10, len(X) - 1), random_state=42)
+    tsne_results = tsne.fit_transform(X)
+
+    # Convert to NumPy array
+    tsne_results = np.array(tsne_results)
+    clusters = np.array(clusters)
+
+    # Set up the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.set_style("whitegrid")
+
+    # Unique cluster labels
+    unique_clusters = np.unique(clusters)
+
+    # Assign colors from seaborn palette
+    palette = sns.color_palette("husl", len(unique_clusters))
+
+    for i, cluster in enumerate(unique_clusters):
+        # Get points belonging to the cluster
+        points = tsne_results[clusters == cluster]
+
+        # Scatter plot for points
+        ax.scatter(points[:, 0], points[:, 1], color=palette[i], alpha=0.7, edgecolors='k', label=f"Cluster {cluster}")
+
+        # Convex Hull for 2D
+        if len(points) > 2:  # Convex hull requires at least 3 points
+            hull = ConvexHull(points)
+            hull_points = points[hull.vertices]
+            ax.fill(hull_points[:, 0], hull_points[:, 1], color=palette[i], alpha=0.2)
+
+    # Labels and aesthetics
+    ax.set_title("2D t-SNE Visualization of Clusters")
+    ax.set_xlabel("t-SNE Dimension 1")
+    ax.set_ylabel("t-SNE Dimension 2")
+    ax.legend()
+
     plt.show()
 
-    # **Step 7: Print Cluster Assignments**
+
+def visualize_clusters_3d(X, clusters):
+    """Uses t-SNE to visualize clusters in 3D space using Plotly."""
+    print("Applying t-SNE for 3D visualization...")
+    tsne = TSNE(n_components=3, perplexity=min(10, len(X) - 1), random_state=42)
+    tsne_results = tsne.fit_transform(X)
+
+    # Convert to NumPy array
+    tsne_results = np.array(tsne_results)
+    clusters = np.array(clusters)
+
+    # Create a Plotly 3D scatter plot
+    fig = px.scatter_3d(
+        x=tsne_results[:, 0],
+        y=tsne_results[:, 1],
+        z=tsne_results[:, 2],
+        color=clusters.astype(str),  # Convert cluster numbers to strings for better visualization
+        title="3D t-SNE Visualization of Document Clusters",
+        labels={'x': 't-SNE Dim 1', 'y': 't-SNE Dim 2', 'z': 't-SNE Dim 3'},
+        opacity=0.8
+    )
+
+    fig.update_traces(marker=dict(size=6, line=dict(width=1)))
+    fig.show()
+
+
+def print_cluster_assignments(documents, clusters):
+    """Displays document cluster assignments."""
+    print("\n📌 Cluster Assignments:")
     for i, doc in enumerate(documents):
         print(f" Document {i} (Cluster {clusters[i]}): {doc}")
 
 
-# 🔥 Run the main function
+def main():
+    """Main function to execute the full NLP clustering pipeline."""
+    print(" Starting NLP Document Clustering Pipeline...\n")
+
+    documents = get_documents()
+    reduced_tf_idf = preprocess_documents(documents)
+    clusters = apply_clustering(reduced_tf_idf)
+
+    print_cluster_assignments(documents, clusters)
+
+    # Visualizing 2D and 3D separately
+    visualize_clusters_2d(reduced_tf_idf, clusters)
+    visualize_clusters_3d(reduced_tf_idf, clusters)
+
+    print("\n Clustering pipeline completed!")
+
+
 if __name__ == '__main__':
     main()
+
