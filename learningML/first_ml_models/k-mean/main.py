@@ -85,9 +85,6 @@ def apply_clustering(X, k=6):
     return kmeans.fit(X)
 
 
-
-
-
 def visualize_clusters_2d(X, clusters):
     """Uses t-SNE to visualize clusters in 2D space with convex hulls."""
     print(" Applying t-SNE for 2D visualization...")
@@ -181,4 +178,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
