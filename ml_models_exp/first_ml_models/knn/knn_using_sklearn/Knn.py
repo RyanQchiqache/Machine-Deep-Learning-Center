@@ -97,7 +97,7 @@ class DiabetesPredictor:
 if __name__ == '__main__':
     # Usage
     predictor = DiabetesPredictor(
-        '/learningML/data/diabetes.csv')
+        '/ml_models_exp/data/diabetes.csv')
     X_train, X_test, y_train, y_test = predictor.preprocess_data()
     predictor.train_model(X_train, y_train)
     predictor.evaluate_model(X_test, y_test)
