@@ -153,3 +153,4 @@ ml_models_exp/models/fasttext.model.wv.vectors_ngrams.npy
 # Ignore all log files inside logs/real and logs/fake
 gan/DCGAN/logs/real/
 gan/DCGAN/logs/fake/
+ComputerVisionCourse/Exercise04/data
