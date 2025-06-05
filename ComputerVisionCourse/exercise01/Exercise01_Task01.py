@@ -187,3 +187,46 @@ plt.title(f"Resized Image with Patch: {half_size[1]}×{half_size[0]}")
 plt.axis('off')
 plt.show()
 
+# Extract bounding boxes for the detected class
+bounding_box = extract_bounding_boxes(cam, img)
+
+# Resize original image and convert to OpenCV BGR format
+resized_img = cv2.cvtColor(np.array(img.resize((224, 224))), cv2.COLOR_RGB2BGR)
+
+# Convert CAM to heatmap — ensure shape and type are correct
+cam_resized = cv2.resize(cam, (224, 224))  # Resize CAM to match image size
+cam_uint8 = np.uint8(255 * cam_resized)    # Convert to 8-bit grayscale
+
+# Apply color map to CAM (jet → BGR)
+heatmap = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)  # (224, 224, 3)
+
+# Convert original image to OpenCV BGR format
+resized_img = cv2.cvtColor(np.array(img.resize((224, 224))), cv2.COLOR_RGB2BGR)
+
+# Sanity check shapes before blending
+assert heatmap.shape == resized_img.shape, f"Mismatch: heatmap={heatmap.shape}, image={resized_img.shape}"
+
+# Blend the image with the heatmap
+overlay = cv2.addWeighted(resized_img, 0.5, heatmap, 0.5, 0)
+
+# Convert to RGB for matplotlib display
+overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+
+
+# Plot Grad-CAM heatmap, bounding box, and smooth overlay
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 3, 1)
+plt.imshow(cam, cmap='jet')
+plt.title("Grad-CAM Heatmap")
+
+plt.subplot(1, 3, 2)
+plt.imshow(bounding_box)
+plt.title("Detected Region")
+
+plt.subplot(1, 3, 3)
+plt.imshow(overlay_rgb)  # <- use RGB version here!
+plt.title("Smooth Overlay")
+
+plt.tight_layout()
+plt.show()
