@@ -154,3 +154,4 @@ ml_models_exp/models/fasttext.model.wv.vectors_ngrams.npy
 gan/DCGAN/logs/real/
 gan/DCGAN/logs/fake/
 ComputerVisionCourse/Exercise04/data
+computerVisionBach/SS_data
