@@ -50,7 +50,7 @@ class UNet(nn.Module):
         # Final output
         self.final_conv = nn.Conv2d(16, out_classes, kernel_size=1)
 
-    def forward(self, x, return_features=False):
+    def forward(self, x):
         # Encoder
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool1(e1))
@@ -79,8 +79,8 @@ class UNet(nn.Module):
 
         out = self.final_conv(d1)
 
-        if return_features:
+        """if return_features:
             return out, {'enc1': e1, 'enc2': e2, 'enc3': e3, 'enc4': e4,
-                         'bottleneck': b, 'dec4': d4, 'dec3': d3, 'dec2': d2, 'dec1': d1}
+                         'bottleneck': b, 'dec4': d4, 'dec3': d3, 'dec2': d2, 'dec1': d1}"""
 
         return out

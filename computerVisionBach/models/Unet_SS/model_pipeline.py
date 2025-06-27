@@ -11,20 +11,25 @@ from computerVisionBach.models.Unet_SS.satellite_data import SatelliteDataset
 from segmentation_models_pytorch.losses import DiceLoss
 from torchmetrics.classification import MulticlassJaccardIndex
 from tqdm import tqdm
+import segmentation_models_pytorch as smp
 from computerVisionBach.models.Unet_SS.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
+from computerVisionBach.models.Unet_SS import utils
+from torch.utils.tensorboard import SummaryWriter
 
 # ================================
 # Configuration
 # ================================
-PATCH_SIZE = 256
-ROOT_DIR = '/computerVisionBach/SS_data'
-N_CLASSES = 6
+PATCH_SIZE = 512
+ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
+N_CLASSES = 20
 BATCH_SIZE = 16
-NUM_EPOCHS = 15
+NUM_EPOCHS = 30
 LEARNING_RATE = 1e-4
 RANDOM_SEED = 42
-
+MODELS = {}
+writer = SummaryWriter(log_dir=os.path.join(ROOT_DIR, 'logs'))
+patchify_enabled = True
 CLASS_COLOR_MAP = {
     0: np.array([60, 16, 152]),
     1: np.array([132, 41, 246]),
@@ -33,10 +38,47 @@ CLASS_COLOR_MAP = {
     4: np.array([226, 169, 41]),
     5: np.array([155, 155, 155])
 }
+COLOR_MAP_dense = {
+    1: ['Low vegetation', '#f423e8'],
+    2: ['Paved road', '#66669c'],
+    3: ['Non paved road', '#be9999'],
+    4: ['Paved parking place', '#999999'],
+    5: ['Non paved parking place', '#faaa1e'],
+    6: ['Bikeways', '#98fb98'],
+    7: ['Sidewalks', '#4682b4'],
+    8: ['Entrance exit', '#6b8e23'],
+    9: ['Danger area', '#dcdc00'],
+    10: ['Lane-markings', '#ff0000'],
+    11: ['Building', '#dc143c'],
+    12: ['Car', '#7d008e'],
+    13: ['Trailer', '#aac828'],
+    14: ['Van', '#c83c64'],
+    15: ['Truck', '#961250'],
+    16: ['Long truck', '#51b451'],
+    17: ['Bus', '#bef115'],
+    18: ['Clutter', '#0b7720'],
+    19: ['Impervious surface', '#78f078'],
+    20: ['Tree', '#464646'],
+}
+COLOR_MAP_multi_lane = {
+    0: ['Background', '#000000'],
+    1: ['Dash Line', '#ff0000'],
+    2: ['Long Line', '#0000ff'],
+    3: ['Small dash line', '#ffff00'],
+    4: ['Turn signs', '#00ff00'],
+    5: ['Other signs', '#ff8000'],
+    6: ['Plus sign on crossroads', '#800000'],
+    7: ['Crosswalk', '#00ffff'],
+    8: ['Stop line', '#008000'],
+    9: ['Zebra zone', '#ff00ff'],
+    10: ['No parking zone', '#009696'],
+    11: ['Parking space', '#c8c800'],
+    12: ['Other lane-markings', '#6400c8'],
+    }
 
 
 # ================================
-# Utility Functions
+# patchify and load data kaggel
 # ================================
 def extract_patches_from_directory(directory, kind='images'):
     dataset = []
@@ -61,7 +103,7 @@ def extract_patches_from_directory(directory, kind='images'):
 def load_data(root_dir, test_size, seed):
     images = extract_patches_from_directory(root_dir, kind='images')
     masks_rgb = extract_patches_from_directory(root_dir, kind='masks')
-    masks_label = convert_masks_to_class_labels(masks_rgb)
+    masks_label = utils.convert_masks_to_class_labels(masks_rgb)
 
     visualisation.visualize_sample(images, masks_rgb, masks_label)
 
@@ -72,14 +114,74 @@ def load_data(root_dir, test_size, seed):
 
     return train_dataset, test_dataset
 
+# ================================
+# patchify and load data DLR skyscapes
+# ================================
+def load_folder(image_dir, mask_dir):
+    images = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.jpg') or f.endswith('.png')])
+    masks = sorted([os.path.join(mask_dir, f) for f in os.listdir(mask_dir) if f.endswith('.png')])
+
+    X, y = [], []
+    for img_path, mask_path in zip(images, masks):
+        img = cv2.imread(img_path)
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = utils.remap_mask(mask)
+
+        h = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE
+        w = (img.shape[1] // PATCH_SIZE) * PATCH_SIZE
+        img = img[:h, :w]
+        mask = mask[:h, :w]
+
+        if patchify_enabled:
+            img_patches = patchify(img, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
+            mask_patches = patchify(mask, (PATCH_SIZE, PATCH_SIZE), step=PATCH_SIZE)
+
+            for i in range(img_patches.shape[0]):
+                for j in range(img_patches.shape[1]):
+                    X.append(img_patches[i, j, 0])
+                    y.append(mask_patches[i, j])
+        else:
+            X.append(img)
+            y.append(mask)
+
+    return np.array(X), np.array(y)
+
+
+def load_data_dlr(base_dir, dataset_type="SS_Dense"):
+    base = os.path.join(base_dir, dataset_type)
+
+    X_train, y_train = load_folder(
+        os.path.join(base, "train/images"),
+        os.path.join(base, "train/labels/grayscale")
+    )
+    X_val, y_val = load_folder(
+        os.path.join(base, "val/images"),
+        os.path.join(base, "val/labels/grayscale")
+    )
+
+    color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
+
+    visualisation.visualize_sample(
+        X_train,
+        [utils.class_to_rgb(mask, color_map_rgb) for mask in y_train],
+        y_train
+    )
+
+    train_dataset = SatelliteDataset(X_train, y_train)
+    test_dataset = SatelliteDataset(X_val, y_val)
+
+    return train_dataset, test_dataset
+
+
+
 
 def get_loss_and_optimizer(model, lr):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss()
-    criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
+    #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    return criterion, optimizer
+    return ce_loss, optimizer
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
@@ -88,7 +190,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
 
-        outputs, _ = model(images, return_features=True)
+        outputs = model(images)
         loss = criterion(outputs, masks)
 
         optimizer.zero_grad()
@@ -102,37 +204,69 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader, test_loader, criterion, optimizer, test_dataset, device, num_epochs=15):
+def train(model, train_loader, test_loader, criterion, optimizer, test_dataset, device, num_epochs=15, writer=None):
     for epoch in range(num_epochs):
         loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         print(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
 
-        if (epoch + 1) % 3 == 0:
+        if writer:
+            writer.add_scalar("Loss/train", loss, epoch)
+
+        model.eval()
+        with torch.no_grad():
             model.eval()
-            with torch.no_grad():
+            evaluate(model, test_loader, device)
+            """if (epoch + 1) % 10 == 0 or epoch == 1:
                 val_image = test_dataset[0][0].unsqueeze(0).to(device)
                 _, features = model(val_image, return_features=True)
-                for name in ["bottle_neck", "enc1", "enc2", "dec3", "dec4"]:
-                    visualisation.visualise_feture_map(features[name], f"{name} (Epoch {epoch + 1})")
-            evaluate(model, test_loader, device)
+                for name in ["bottleneck", "enc1", "enc2", "dec3", "dec4"]:
+                    visualisation.visualise_feature_map(features[name], f"{name} (Epoch {epoch + 1})")"""
+
+def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=None):
+    print(f"\nTraining model: {model_name}")
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    if model_name.lower() == "unet":
+        model = UNet(3, N_CLASSES).to(device)
+    elif model_name.lower() == "deeplabv3+":
+        model = smp.DeepLabV3Plus(
+            encoder_name="resnet50",       # or "efficientnet-b0", "mobilenet_v2", etc.
+            encoder_weights="imagenet",
+            in_channels=3,
+            classes=N_CLASSES,
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
+
+    criterion, optimizer = get_loss_and_optimizer(model, lr=LEARNING_RATE)
+
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+
+    train(
+        model=model,
+        train_loader=train_loader,
+        test_loader=test_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        test_dataset=test_dataset,
+        device=device,
+        num_epochs=NUM_EPOCHS,
+        writer=writer
+    )
+    # Save model after training
+    model_save_path = f"checkpoints/{model_name}_model.pth"
+    os.makedirs("checkpoints", exist_ok=True)
+    torch.save(model.state_dict(), model_save_path)
+    print(f"✅ Model saved to {model_save_path}")
+
+    evaluate(model, test_loader, device)
+    visualisation.visualize_prediction(model, test_loader, device)
+
+    return model
 
 
-def rgb_to_class_label(mask):
-    label = np.zeros(mask.shape[:2], dtype=np.uint8)
-    for class_id, rgb in CLASS_COLOR_MAP.items():
-        label[np.all(mask == rgb, axis=-1)] = class_id
-    return label
-
-
-def convert_masks_to_class_labels(masks):
-    return np.array([rgb_to_class_label(mask) for mask in masks])
-
-
-def class_to_rgb(mask):
-    rgb_mask = np.zeros((*mask.shape, 3), dtype=np.uint8)
-    for class_id, color in CLASS_COLOR_MAP.items():
-        rgb_mask[mask == class_id] = color
-    return rgb_mask
 
 
 # ================================
@@ -157,7 +291,6 @@ def evaluate(model, dataloader, device):
     miou = iou_metric(preds, targets)
     print(f"\n\u2713 Mean IoU: {miou:.4f}")
 
-
 #=======================================
 # main function
 #=======================================
@@ -168,21 +301,21 @@ def main():
     if not os.path.isdir(ROOT_DIR):
         raise FileNotFoundError(f"file not found: {ROOT_DIR}")
 
-    train_dataset, test_dataset = load_data(ROOT_DIR, test_size=0.2, seed=RANDOM_SEED)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    #train_dataset, test_dataset = load_data(ROOT_DIR, test_size=0.2, seed=RANDOM_SEED)
+    train_dataset, test_dataset = load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
 
-    # SMP: ENCODER NAME, ENCODER WEIGHTS, IN_CHANNEL, NUM_CLASSES
-    model = UNet(3, N_CLASSES).to(device)
-    criterion, optimizer = get_loss_and_optimizer(model, lr=1e-4)
+    print(f"\nTrain samples: {len(train_dataset)}")
+    print(f"Test samples: {len(test_dataset)}")
+    print("Train label range:", np.min(train_dataset.masks), "to", np.max(train_dataset.masks))
+    print("Test label range:", np.min(test_dataset.masks), "to", np.max(test_dataset.masks))
+    assert np.max(train_dataset.masks) < N_CLASSES
 
-    print(f"\n⚡ Starting training on: {device}")
-    train(model, train_loader, test_loader, criterion, optimizer, test_dataset, device, NUM_EPOCHS)
+    writer = SummaryWriter(log_dir="runs/Unet_vs_DeepLab")
 
-    print("\n\u2705 Training completed.")
-    evaluate(model, test_loader, device)
-    visualisation.visualize_prediction(model, test_loader, device)
+    #train_and_evaluate("unet", train_dataset, test_dataset, device, writer)
+    train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
 
+    writer.close()
 
 # ================================
 # Training Script
