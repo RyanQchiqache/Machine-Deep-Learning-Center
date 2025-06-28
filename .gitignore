@@ -143,6 +143,7 @@ cython_debug/
 _myenv/
 myenv/
 .mynv/
+ry_venv
 
 
 # Ignore all CIFAR-10 dataset files
