@@ -155,3 +155,7 @@ gan/DCGAN/logs/real/
 gan/DCGAN/logs/fake/
 ComputerVisionCourse/Exercise04/data
 computerVisionBach/SS_data
+computerVisionBach/DLR_semantic_segmentation
+computerVisionBach/landcover.ai.v1
+computerVisionBach/flair_1_toy_dataset
+computerVisionBach/UnifiedPatches
