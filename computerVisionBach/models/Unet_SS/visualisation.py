@@ -1,8 +1,11 @@
 import torch
-from matplotlib import pyplot as plt
-from computerVisionBach.models.Unet_SS import utils
 import numpy as np
+from computerVisionBach.models.Unet_SS import utils
 from computerVisionBach.models.Unet_SS.model_pipeline import COLOR_MAP_dense, COLOR_MAP_multi_lane
+from matplotlib import pyplot as plt
+from patchify import unpatchify
+import os
+
 
 color_map = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
 # ================================
@@ -88,3 +91,49 @@ def visualise_feature_map(feature_map, title):
     plt.suptitle(title)
     plt.tight_layout()
     plt.show()
+
+def reconstruct_and_visualize_patches(image_patches, mask_patches, pred_patches, patch_size, grid_shape, color_map, save_path=None):
+    """
+    image_patches, mask_patches, pred_patches: np.array of shape (n_patches, H, W, C) or (n_patches, H, W)
+    grid_shape: tuple of (rows, cols)
+    """
+    assert len(image_patches) == grid_shape[0] * grid_shape[1], "Patch count doesn't match grid shape"
+
+    h, w = patch_size, patch_size
+    img_array = image_patches.reshape(grid_shape[0], grid_shape[1], h, w, 3)
+    mask_array = mask_patches.reshape(grid_shape[0], grid_shape[1], h, w)
+    pred_array = pred_patches.reshape(grid_shape[0], grid_shape[1], h, w)
+
+    full_image = unpatchify(img_array, (grid_shape[0] * h, grid_shape[1] * w, 3))
+    full_mask = unpatchify(mask_array, (grid_shape[0] * h, grid_shape[1] * w))
+    full_pred = unpatchify(pred_array, (grid_shape[0] * h, grid_shape[1] * w))
+
+    full_mask_rgb = utils.class_to_rgb(full_mask, color_map)
+    full_pred_rgb = utils.class_to_rgb(full_pred, color_map)
+
+    # Visualization
+    plt.figure(figsize=(18, 6))
+    plt.subplot(1, 3, 1)
+    plt.imshow(full_image)
+    plt.title("Original Image")
+    plt.axis("off")
+
+    plt.subplot(1, 3, 2)
+    plt.imshow(full_mask_rgb)
+    plt.title("Ground Truth Mask")
+    plt.axis("off")
+
+    plt.subplot(1, 3, 3)
+    plt.imshow(full_pred_rgb)
+    plt.title("Predicted Mask")
+    plt.axis("off")
+
+    plt.tight_layout()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300)
+        print(f"✅ Saved: {save_path}")
+    else:
+        plt.show()
+
+    plt.close()

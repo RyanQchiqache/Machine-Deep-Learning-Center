@@ -30,6 +30,7 @@ RANDOM_SEED = 42
 MODELS = {}
 writer = SummaryWriter(log_dir=os.path.join(ROOT_DIR, 'logs'))
 patchify_enabled = True
+NUM_RECONSTRUCTIONS = 4
 CLASS_COLOR_MAP = {
     0: np.array([60, 16, 152]),
     1: np.array([132, 41, 246]),
@@ -291,6 +292,48 @@ def evaluate(model, dataloader, device):
     miou = iou_metric(preds, targets)
     print(f"\n\u2713 Mean IoU: {miou:.4f}")
 
+# ================================
+# Reconstruction of images
+# ================================
+def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions):
+    model.eval()
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+
+    patch_size = 512
+    patch_shape = (4, 4)
+    patches_per_image = patch_shape[0] * patch_shape[1]
+
+    all_images, all_masks, all_preds = [], [], []
+    count = 0
+
+    with torch.no_grad():
+        for img_tensor, mask_tensor in test_loader:
+            if count >= num_reconstructions:
+                break
+
+            img_tensor = img_tensor.cuda()
+            output = model(img_tensor)
+            pred = torch.argmax(output, dim=1).squeeze(0).cpu().numpy()
+
+            all_images.append(img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy())
+            all_masks.append(mask_tensor.squeeze(0).numpy())
+            all_preds.append(pred)
+
+            # Once 16 patches collected, reconstruct a full image
+            if len(all_images) == patches_per_image:
+                save_path = f"reconstructed_outputs/reconstruction_{count}.png"
+                visualisation.reconstruct_and_visualize_patches(
+                    np.array(all_images), np.array(all_masks), np.array(all_preds),
+                    patch_size=patch_size,
+                    grid_shape=patch_shape,
+                    color_map=color_map,
+                    save_path=save_path
+                )
+                count += 1
+                all_images, all_masks, all_preds = [], [], []
+
+
+
 #=======================================
 # main function
 #=======================================
@@ -313,7 +356,10 @@ def main():
     writer = SummaryWriter(log_dir="runs/Unet_vs_DeepLab")
 
     #train_and_evaluate("unet", train_dataset, test_dataset, device, writer)
-    train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
+    model = train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
+
+    color_map = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
+    reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions=4)
 
     writer.close()
 
