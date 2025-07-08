@@ -31,53 +31,6 @@ MODELS = {}
 writer = SummaryWriter(log_dir=os.path.join(ROOT_DIR, 'logs'))
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
-CLASS_COLOR_MAP = {
-    0: np.array([60, 16, 152]),
-    1: np.array([132, 41, 246]),
-    2: np.array([110, 193, 228]),
-    3: np.array([254, 221, 58]),
-    4: np.array([226, 169, 41]),
-    5: np.array([155, 155, 155])
-}
-COLOR_MAP_dense = {
-    1: ['Low vegetation', '#f423e8'],
-    2: ['Paved road', '#66669c'],
-    3: ['Non paved road', '#be9999'],
-    4: ['Paved parking place', '#999999'],
-    5: ['Non paved parking place', '#faaa1e'],
-    6: ['Bikeways', '#98fb98'],
-    7: ['Sidewalks', '#4682b4'],
-    8: ['Entrance exit', '#6b8e23'],
-    9: ['Danger area', '#dcdc00'],
-    10: ['Lane-markings', '#ff0000'],
-    11: ['Building', '#dc143c'],
-    12: ['Car', '#7d008e'],
-    13: ['Trailer', '#aac828'],
-    14: ['Van', '#c83c64'],
-    15: ['Truck', '#961250'],
-    16: ['Long truck', '#51b451'],
-    17: ['Bus', '#bef115'],
-    18: ['Clutter', '#0b7720'],
-    19: ['Impervious surface', '#78f078'],
-    20: ['Tree', '#464646'],
-}
-COLOR_MAP_multi_lane = {
-    0: ['Background', '#000000'],
-    1: ['Dash Line', '#ff0000'],
-    2: ['Long Line', '#0000ff'],
-    3: ['Small dash line', '#ffff00'],
-    4: ['Turn signs', '#00ff00'],
-    5: ['Other signs', '#ff8000'],
-    6: ['Plus sign on crossroads', '#800000'],
-    7: ['Crosswalk', '#00ffff'],
-    8: ['Stop line', '#008000'],
-    9: ['Zebra zone', '#ff00ff'],
-    10: ['No parking zone', '#009696'],
-    11: ['Parking space', '#c8c800'],
-    12: ['Other lane-markings', '#6400c8'],
-    }
-
-
 # ================================
 # patchify and load data kaggel
 # ================================
@@ -115,9 +68,9 @@ def load_data(root_dir, test_size, seed):
 
     return train_dataset, test_dataset
 
-# ================================
+# =====================================
 # patchify and load data DLR skyscapes
-# ================================
+# =====================================
 def load_folder(image_dir, mask_dir):
     images = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.jpg') or f.endswith('.png')])
     masks = sorted([os.path.join(mask_dir, f) for f in os.listdir(mask_dir) if f.endswith('.png')])
@@ -160,7 +113,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
         os.path.join(base, "val/labels/grayscale")
     )
 
-    color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
+    color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
 
     visualisation.visualize_sample(
         X_train,
@@ -176,7 +129,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
 
 
 
-def get_loss_and_optimizer(model, lr):
+def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss()
     #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
@@ -241,7 +194,7 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
-    criterion, optimizer = get_loss_and_optimizer(model, lr=LEARNING_RATE)
+    criterion, optimizer = get_loss_and_optimizer(model)
 
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
 
@@ -266,9 +219,6 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
     visualisation.visualize_prediction(model, test_loader, device)
 
     return model
-
-
-
 
 # ================================
 # Evaluation
@@ -355,13 +305,17 @@ def main():
 
     writer = SummaryWriter(log_dir="runs/Unet_vs_DeepLab")
 
-    #train_and_evaluate("unet", train_dataset, test_dataset, device, writer)
-    model = train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
+    try:
+        # train_and_evaluate("unet", train_dataset, test_dataset, device, writer)
+        model = train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
 
-    color_map = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
-    reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions=4)
+        color_map = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
+        reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions=4)
+    except KeyboardInterrupt :
+        raise KeyboardInterrupt("training interrupted due to keyboard interrupt")
+    finally:
+        writer.close()
 
-    writer.close()
 
 # ================================
 # Training Script
