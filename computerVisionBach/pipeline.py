@@ -1,16 +1,17 @@
 import os
 import cv2
-import numpy as np
-import random
-import matplotlib.pyplot as plt
-from PIL import Image
-from patchify import patchify
-from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader
 import torch
-from torchvision import transforms
+import random
+import numpy as np
+from PIL import Image
 import torch.nn as nn
 from simple_unet import UNet
+from patchify import patchify
+import matplotlib.pyplot as plt
+from torchvision import transforms
+from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
+from computerVisionBach.models.Unet_SS import utils
 
 # Constants
 PATCH_SIZE = 256
@@ -18,15 +19,6 @@ ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/SS_d
 N_CLASSES = 6
 N_EPOCHS = 20
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-CLASS_COLOR_MAP = {
-    0: np.array([60, 16, 152]),
-    1: np.array([132, 41, 246]),
-    2: np.array([110, 193, 228]),
-    3: np.array([254, 221, 58]),
-    4: np.array([226, 169, 41]),
-    5: np.array([155, 155, 155])
-}
 
 class SatelliteDataset(Dataset):
     def __init__(self, image_patches, mask_patches):
@@ -65,7 +57,7 @@ def extract_patches_from_directory(directory, kind='images'):
 
 def rgb_to_class_label(mask):
     label = np.zeros(mask.shape[:2], dtype=np.uint8)
-    for class_id, rgb in CLASS_COLOR_MAP.items():
+    for class_id, rgb in utils.CLASS_COLOR_MAP.items():
         label[np.all(mask == rgb, axis=-1)] = class_id
     return label
 
@@ -127,7 +119,7 @@ def evaluate(model, dataloader, device):
 
 def class_to_rgb(mask):
     rgb_mask = np.zeros((*mask.shape, 3), dtype=np.uint8)
-    for class_id, color in CLASS_COLOR_MAP.items():
+    for class_id, color in utils.CLASS_COLOR_MAP.items():
         rgb_mask[mask == class_id] = color
     return rgb_mask
 
@@ -151,17 +143,15 @@ def visualize_prediction(model, dataloader, device):
             plt.tight_layout(); plt.show()
             break
 
-
-if __name__ == "__main__":
-
-
+def main():
     images = extract_patches_from_directory(ROOT_DIR, kind='images')
     masks_rgb = extract_patches_from_directory(ROOT_DIR, kind='masks')
     masks_label = convert_masks_to_class_labels(masks_rgb)
 
     visualize_sample(images, masks_rgb, masks_label)
 
-    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, test_size=0.2, random_state=42, shuffle=True)
+    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, test_size=0.2, random_state=42,
+                                                        shuffle=True)
 
     train_dataset = SatelliteDataset(X_train, y_train)
     test_dataset = SatelliteDataset(X_test, y_test)
@@ -180,3 +170,9 @@ if __name__ == "__main__":
     # evaluation
     evaluate(model, test_loader, device)
     visualize_prediction(model, test_loader, device)
+
+
+if __name__ == "__main__":
+    main()
+
+
