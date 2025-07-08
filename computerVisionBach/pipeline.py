@@ -16,6 +16,9 @@ from simple_unet import UNet
 PATCH_SIZE = 256
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/SS_data'
 N_CLASSES = 6
+N_EPOCHS = 20
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 CLASS_COLOR_MAP = {
     0: np.array([60, 16, 152]),
     1: np.array([132, 41, 246]),
@@ -77,6 +80,28 @@ def visualize_sample(images, masks, labels):
     plt.subplot(1, 3, 3); plt.imshow(labels[idx]); plt.title("Label Mask")
     plt.tight_layout(); plt.show()
 
+def train(model, dataloader, epochs, criterion, optimizer):
+    """
+     function for training the model using model, dataloader, epochs, criterion, optimizer
+    """
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        for images, masks in dataloader:
+            images, masks = images.to(device), masks.to(device)
+
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+
+        avg_loss = running_loss / len(train_loader)
+        print(f"Epoch [{epoch+1}/{N_EPOCHS}], Loss: {avg_loss:.4f}")
+
 def evaluate(model, dataloader, device):
     model.eval()
     ious = []
@@ -128,7 +153,7 @@ def visualize_prediction(model, dataloader, device):
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
     images = extract_patches_from_directory(ROOT_DIR, kind='images')
     masks_rgb = extract_patches_from_directory(ROOT_DIR, kind='masks')
@@ -136,41 +161,22 @@ if __name__ == "__main__":
 
     visualize_sample(images, masks_rgb, masks_label)
 
-    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, test_size=0.2, random_state=42, shuffle=True)
 
     train_dataset = SatelliteDataset(X_train, y_train)
     test_dataset = SatelliteDataset(X_test, y_test)
 
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=2)
 
     model = UNet(in_channels=3, out_classes=N_CLASSES).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # Training loop
-    num_epochs = 20
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        for images, masks in train_loader:
-            images, masks = images.to(device), masks.to(device)
-
-            outputs = model(images)
-            loss = criterion(outputs, masks)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-
-        avg_loss = running_loss / len(train_loader)
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
-
-
-        evaluate(model, test_loader, device)
-
+    train(model, train_loader, N_EPOCHS, criterion, optimizer)
     print("Training completed.")
+
+    # evaluation
     evaluate(model, test_loader, device)
     visualize_prediction(model, test_loader, device)
