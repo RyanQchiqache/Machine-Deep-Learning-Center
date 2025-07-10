@@ -8,10 +8,10 @@ from tqdm import tqdm
 import os
 
 # --- Config ---
-batch_size = 256
-epochs = 10  # feel free to increase this for better results if you have the compute
-temperature = 0.5
-embedding_dim = 128
+BATCH_SIZE = 256
+EPOCHS = 10  # feel free to increase this for better results if you have the compute
+TEMPERATURE = 0.5
+EMBEDDING_DIM = 128
 lr = 1e-3
 
 
@@ -19,9 +19,12 @@ class SimCLRDataset(torch.utils.data.Dataset):
     def __init__(self, base_dataset):
         self.base_dataset = base_dataset
         self.transforms = T.Compose([
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            T.RandomResizedCrop(32, scale=(0.2, 1.0)),
+            T.ColorJitter(0.4, 0.4, 0.4, 0.1),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -71,7 +74,7 @@ class SimCLRModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = SimpleConvEncoder()
-        self.projector = nn.Sequential(nn.Linear(512, 512), nn.ReLU(), nn.Linear(512, embedding_dim))
+        self.projector = nn.Sequential(nn.Linear(512, 512), nn.ReLU(), nn.Linear(512, EMBEDDING_DIM))
 
     def forward(self, x):
         h = self.encoder(x).squeeze()
@@ -122,7 +125,32 @@ def contrastive_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.
     return loss
 
 
-if __name__ == "__main__":
+def train(model, dataloader, epochs, optimizer, device, temperature):
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        progress_bar = tqdm(dataloader, desc=f"Epoch: {epoch + 1}", leave=True)
+        for xi, xj in progress_bar:
+            xi, xj = xi.to(device), xj.to(device)
+            zi, zj = model(xi), model(xj)
+            loss = contrastive_loss(z1=zi, z2=zj, temperature=temperature)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+            avg_loss = total_loss / (progress_bar.n + 1)
+            progress_bar.set_postfix(loss=f"{avg_loss:.4f}")
+
+        print(f"Epoch {epoch + 1}/{epochs} - Avg Loss: {total_loss:.4f}/{len(dataloader):.4f}")
+
+        print("Saving model...")
+        torch.save(model.state_dict(), "simclr_model.pth")
+        print("Model saved as simclr_model.pth")
+
+
+def main():
     device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device "{device}".')
 
@@ -137,26 +165,13 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     train_dataset = torchvision.datasets.CIFAR10(root="data", train=True, download=True)
-    train_loader = DataLoader(SimCLRDataset(train_dataset), batch_size=batch_size, shuffle=True, num_workers=1)
+    train_loader = DataLoader(SimCLRDataset(train_dataset), batch_size=BATCH_SIZE, shuffle=True, num_workers=1)
 
-    # --- Training Loop ---
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        for xi, xj in tqdm(train_loader):
-            xi, xj = xi.to(device), xj.to(device)
-            zi, zj = model(xi), model(xj)
-            loss = contrastive_loss(zi, zj, temperature=temperature)
+    try:
+        train(model, train_loader, EPOCHS, optimizer, device, TEMPERATURE)
+    except KeyboardInterrupt:
+        print("training was interrupted by user")
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
 
-            total_loss += loss.item()
-
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(train_loader):.4f}")
-
-        # Save the model
-        print("Saving model...")
-        torch.save(model.state_dict(), "simclr_model.pth")
-        print("Model saved as simclr_model.pth")
+if __name__ == "__main__":
+    main()
