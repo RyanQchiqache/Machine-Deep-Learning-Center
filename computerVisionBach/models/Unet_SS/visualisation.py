@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from computerVisionBach.models.Unet_SS import utils
-from computerVisionBach.models.Unet_SS.utils import COLOR_MAP_dense, COLOR_MAP_multi_lane
+from computerVisionBach.models.Unet_SS.model_pipeline import COLOR_MAP_dense, COLOR_MAP_multi_lane
 from matplotlib import pyplot as plt
 from patchify import unpatchify
 import os
