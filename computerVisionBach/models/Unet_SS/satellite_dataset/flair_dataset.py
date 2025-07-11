@@ -38,7 +38,7 @@ class FlairDataset(SatelliteDataset):
             class_map[matches] = class_idx
         return class_map
 
-    def __init__(self, image_input, mask_input, transform=None):
+    def __init__(self, image_input, mask_input, transform=None, relabel_fn=None):
         if isinstance(image_input, (list, tuple, np.ndarray)) and isinstance(mask_input, (list, tuple, np.ndarray)):
             image_paths = image_input
             mask_paths = mask_input
@@ -48,4 +48,11 @@ class FlairDataset(SatelliteDataset):
             mask_paths = sorted(glob.glob(os.path.join(mask_input, "**", "*.tif"), recursive=True) +
                                 glob.glob(os.path.join(mask_input, "**", "*.png"), recursive=True))
 
-        super().__init__(image_paths, mask_paths, transform=transform, rgb_to_class=FlairDataset.rgb_to_class)
+        super().__init__(
+            images=image_paths,
+            masks=mask_paths,
+            rgb_to_class=FlairDataset.rgb_to_class,
+            transform=transform,
+            relabel_fn=relabel_fn
+        )
+

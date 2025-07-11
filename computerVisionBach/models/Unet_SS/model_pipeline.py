@@ -33,7 +33,7 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 PATCH_SIZE = 512
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 19
+N_CLASSES = 10
 BATCH_SIZE = 12
 NUM_EPOCHS = 40
 LEARNING_RATE = 1e-4
@@ -49,6 +49,7 @@ transforms = T.Compose([
     T.RandomHorizontalFlip(p=0.5),
     T.RandomVerticalFlip(p=0.5),
 ])
+FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
 
 # =====================================
@@ -81,8 +82,9 @@ def prepare_datasets_from_csvs(
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
 
-    train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms)
-    val_dataset = FlairDataset(val_imgs, val_masks, transform=transforms)
+    relabel_fn = lambda mask: utils.relabel_mask(mask, original_labels=FLAIR_USED_LABELS)
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms, relabel_fn=relabel_fn)
+    val_dataset = FlairDataset(val_imgs, val_masks, transform=transforms, relabel_fn=relabel_fn)
 
     return train_dataset, val_dataset
 
@@ -388,6 +390,12 @@ def main():
         )
     else:  # fallback to DLR dataset
          train_dataset,val_dataset = load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
+
+    # Add this after loading datasets
+    print("Checking FLAIR label range...")
+    all_labels = torch.cat([train_dataset[i][1].flatten() for i in range(20)])  # Sample 20 masks
+    print("Unique labels in train set:", torch.unique(all_labels))
+    print("N_CLASSES =", N_CLASSES)
 
     print(f"Dataset chosen is : {dataset_choice}")
     print(f"\nTrain samples: {len(train_dataset)}")

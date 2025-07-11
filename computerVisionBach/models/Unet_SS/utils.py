@@ -1,10 +1,27 @@
 import numpy as np
 
 def rgb_to_class_label(mask, color_map):
-    label = np.zeros(mask.shape[:2], dtype=np.uint8)
+    label = np.full(mask.shape[:2], fill_value=255, dtype=np.uint8)  # invalid default
     for class_id, rgb in color_map.items():
-        label[np.all(mask == rgb, axis=-1)] = class_id
+        match = np.all(mask == rgb, axis=-1)
+        label[match] = class_id
+    if (label == 255).any():
+        unique_unmapped = np.unique(mask[label == 255])
+        print(f"⚠️ Warning: Unmapped RGB values found: {unique_unmapped}")
+        raise ValueError("Some pixels in mask have no class mapping.")
     return label
+
+def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
+    """
+    Remaps original sparse label values (e.g., [1, 2, 6, 18]) to contiguous [0, 1, 2, ..., N-1]
+    so CrossEntropyLoss works without index errors.
+    """
+    label_map = {orig: new for new, orig in enumerate(sorted(original_labels))}
+    remapped = np.zeros_like(mask)
+    for orig_label, new_label in label_map.items():
+        remapped[mask == orig_label] = new_label
+    return remapped
+
 
 
 def convert_masks_to_class_labels(masks):

@@ -8,7 +8,7 @@ import rasterio
 import cv2
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -16,6 +16,7 @@ class SatelliteDataset(Dataset):
         self.patch_size = patch_size
         self.from_paths = isinstance(images[0], str)
         self.transform = transform
+        self.relabel_fn = relabel_fn
 
     def __len__(self):
         return len(self.images)
@@ -34,13 +35,20 @@ class SatelliteDataset(Dataset):
     def _load_mask(self, path: str) -> np.ndarray:
         if path.endswith((".tif", ".tiff")):
             with rasterio.open(path) as src:
-                mask = src.read(1)
+                mask = src.read(1)  # Grayscale
         else:
-            mask = cv2.imread(path)
-            if mask.shape[-1] == 3 and self.rgb_to_class:
-                mask = self.rgb_to_class(mask)
+            mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+            if mask.ndim == 3 and mask.shape[-1] == 3:
+                if self.rgb_to_class:
+                    mask = self.rgb_to_class(mask)
+                else:
+                    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+
+            elif mask.ndim == 2:
+                pass
             else:
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                raise ValueError(f"Unsupported mask shape: {mask.shape}")
 
         return mask.astype(np.int64)
 
@@ -51,6 +59,9 @@ class SatelliteDataset(Dataset):
         else:
             image = self.images[idx].astype(np.float32) / 255.0
             mask = self.masks[idx].astype(np.int64)
+
+        if self.relabel_fn is not None:
+            mask = self.relabel_fn(mask)
 
         image = torch.from_numpy(image).permute(2, 0, 1).contiguous()
         mask = torch.from_numpy(mask).squeeze()
