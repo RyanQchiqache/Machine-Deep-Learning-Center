@@ -1,21 +1,32 @@
 import os
 import cv2
+import sys
 import numpy as np
-from PIL import Image
+import argparse
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 from patchify import patchify
-from sklearn.model_selection import train_test_split
+from typing import Callable, Tuple, List
+import csv
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
-from computerVisionBach.models.Unet_SS.satellite_data import SatelliteDataset
+from datetime import datetime
+from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
+from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
 from segmentation_models_pytorch.losses import DiceLoss
 from torchmetrics.classification import MulticlassJaccardIndex
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
 from computerVisionBach.models.Unet_SS.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
-from computerVisionBach.models.Unet_SS import utils
 from torch.utils.tensorboard import SummaryWriter
+from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
+from transformers.modeling_utils import PreTrainedModel
+from torchvision import transforms as T
+from computerVisionBach.models.Unet_SS import utils
+processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
+
 
 # ================================
 # Configuration
@@ -23,50 +34,57 @@ from torch.utils.tensorboard import SummaryWriter
 PATCH_SIZE = 512
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
-BATCH_SIZE = 16
-NUM_EPOCHS = 30
+BATCH_SIZE = 12
+NUM_EPOCHS = 40
 LEARNING_RATE = 1e-4
 RANDOM_SEED = 42
 MODELS = {}
 writer = SummaryWriter(log_dir=os.path.join(ROOT_DIR, 'logs'))
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
-# ================================
-# patchify and load data kaggel
-# ================================
-def extract_patches_from_directory(directory, kind='images'):
-    dataset = []
-    for path, subdirs, files in os.walk(directory):
-        if path.endswith(kind):
-            for file in sorted(os.listdir(path)):
-                if (kind == 'images' and file.endswith('.jpg')) or (kind == 'masks' and file.endswith('.png')):
-                    img_path = os.path.join(path, file)
-                    img = cv2.imread(img_path, 1)
-                    if kind == 'masks':
-                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    h, w = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE, (img.shape[1] // PATCH_SIZE) * PATCH_SIZE
-                    img = Image.fromarray(img).crop((0, 0, w, h))
-                    img = np.array(img)
-                    patches = patchify(img, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
-                    for i in range(patches.shape[0]):
-                        for j in range(patches.shape[1]):
-                            dataset.append(patches[i, j, 0])
-    return np.array(dataset)
+TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
+TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
+BASE_DIR = "/home/ryqc/data/flair_dataset"
+transforms = T.Compose([
+    T.RandomHorizontalFlip(p=0.5),
+    T.RandomVerticalFlip(p=0.5),
+])
 
 
-def load_data(root_dir, test_size, seed):
-    images = extract_patches_from_directory(root_dir, kind='images')
-    masks_rgb = extract_patches_from_directory(root_dir, kind='masks')
-    masks_label = utils.convert_masks_to_class_labels(masks_rgb)
+# =====================================
+# patchify and load data FLAIR
+# =====================================
+def prepare_datasets_from_csvs(
+    train_csv_path: str,
+    val_csv_path: str,
+    rgb_to_class: Callable[[np.ndarray], np.ndarray],
+    patch_size: int,
+    base_dir: str = None,
+    patchify_enabled: bool = True,
+    debug_limit: int = None,
+) -> Tuple[FlairDataset, FlairDataset]:
+    def load_csv(csv_path: str) -> List[Tuple[str, str]]:
+        with open(csv_path, newline='') as f:
+            reader = csv.reader(f)
+            return [(row[0], row[1]) for row in reader if len(row) == 2]
 
-    visualisation.visualize_sample(images, masks_rgb, masks_label)
+    def resolve_path(p: str) -> str:
+        return os.path.normpath(os.path.join(base_dir, p)) if base_dir and not os.path.isabs(p) else p
 
-    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, train_size=1 - test_size,
-                                                        random_state=seed)
-    train_dataset = SatelliteDataset(X_train, y_train)
-    test_dataset = SatelliteDataset(X_test, y_test)
+    # Load CSVs
+    train_pairs = load_csv(train_csv_path)
+    val_pairs = load_csv(val_csv_path)
 
-    return train_dataset, test_dataset
+    train_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in train_pairs]
+    val_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in val_pairs]
+
+    train_imgs, train_masks = zip(*train_pairs)
+    val_imgs, val_masks = zip(*val_pairs)
+
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms)
+    val_dataset = FlairDataset(val_imgs, val_masks, transform=transforms)
+
+    return train_dataset, val_dataset
 
 # =====================================
 # patchify and load data DLR skyscapes
@@ -121,8 +139,8 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
         y_train
     )
 
-    train_dataset = SatelliteDataset(X_train, y_train)
-    test_dataset = SatelliteDataset(X_val, y_val)
+    train_dataset = SatelliteDataset(X_train, y_train, rgb_to_class=color_map_rgb)
+    test_dataset = SatelliteDataset(X_val, y_val, rgb_to_class=color_map_rgb)
 
     return train_dataset, test_dataset
 
@@ -141,10 +159,22 @@ def get_loss_and_optimizer(model):
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
+
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
 
-        outputs = model(images)
+        if isinstance(model, PreTrainedModel):
+            # Convert to numpy and preprocess
+            images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
+            inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
+            outputs = model(**inputs).logits
+        else:
+            outputs = model(images)
+
+        # Resize if necessary
+        if outputs.shape[-2:] != masks.shape[-2:]:
+            outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+
         loss = criterion(outputs, masks)
 
         optimizer.zero_grad()
@@ -154,6 +184,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         running_loss += loss.item()
 
     return running_loss / len(dataloader)
+
 
 # ================================
 # Training Loop
@@ -184,13 +215,36 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
 
     if model_name.lower() == "unet":
         model = UNet(3, N_CLASSES).to(device)
+
     elif model_name.lower() == "deeplabv3+":
         model = smp.DeepLabV3Plus(
-            encoder_name="resnet50",       # or "efficientnet-b0", "mobilenet_v2", etc.
+            encoder_name="resnet50",
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,
         ).to(device)
+
+    elif model_name.lower() == "segformer":
+        model = SegformerForSemanticSegmentation.from_pretrained(
+            "nvidia/segformer-b2-finetuned-ade-512-512",
+            num_labels=N_CLASSES,
+            ignore_mismatched_sizes=True,
+        ).to(device)
+
+    elif model_name.lower() == "upernet":
+        model = UperNetForSemanticSegmentation.from_pretrained(
+            "openmmlab/upernet-convnext-small",
+            num_labels=N_CLASSES,
+            ignore_mismatched_sizes=True,
+        ).to(device)
+    elif model_name.lower() == "unet_resnet50":
+        model = smp.Unet(
+            encoder_name="resnet50",
+            encoder_weights="imagenet",
+            in_channels=3,
+            classes=N_CLASSES,
+        ).to(device)
+
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
@@ -210,7 +264,7 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
         writer=writer
     )
     # Save model after training
-    model_save_path = f"checkpoints/{model_name}_model.pth"
+    model_save_path = f"checkpoints_flair/{model_name}_model.pth"
     os.makedirs("checkpoints", exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
     print(f"✅ Model saved to {model_save_path}")
@@ -223,24 +277,47 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
 # ================================
 # Evaluation
 # ================================
-def evaluate(model, dataloader, device):
+def evaluate(model, dataloader, device, epoch=None, writer=None):
     model.eval()
-    iou_metric = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
-    all_preds = []
-    all_targets = []
+    iou_macro = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
+    iou_per_class = MulticlassJaccardIndex(num_classes=N_CLASSES, average=None).to(device)
+
+    all_preds, all_targets = [], []
 
     with torch.no_grad():
         for images, masks in tqdm(dataloader, desc="Evaluating", leave=False):
             images, masks = images.to(device), masks.to(device)
-            outputs = model(images)
+
+            if isinstance(model, PreTrainedModel):
+                images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
+                inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
+                outputs = model(**inputs)
+                logits = outputs.logits
+            else:
+                logits = model(images)
+
+            if outputs.shape[-2:] != masks.shape[-2:]:
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+
             preds = torch.argmax(outputs, dim=1)
             all_preds.append(preds)
             all_targets.append(masks)
 
     preds = torch.cat(all_preds)
     targets = torch.cat(all_targets)
-    miou = iou_metric(preds, targets)
-    print(f"\n\u2713 Mean IoU: {miou:.4f}")
+
+    miou = iou_macro(preds, targets)
+    per_class_ious = iou_per_class(preds, targets)
+
+    print(f"\n✓ Mean IoU: {miou:.4f}")
+    for i, class_iou in enumerate(per_class_ious):
+        print(f"  └─ Class {i:02d} IoU: {class_iou:.4f}")
+
+    if writer and epoch is not None:
+        writer.add_scalar("IoU/Mean", miou, epoch)
+        for i, val in enumerate(per_class_ious):
+            writer.add_scalar(f"IoU/Class_{i}", val, epoch)
+
 
 # ================================
 # Reconstruction of images
@@ -282,40 +359,53 @@ def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions
                 count += 1
                 all_images, all_masks, all_preds = [], [], []
 
-
-
 #=======================================
 # main function
 #=======================================
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
+    args = parser.parse_args()
+    dataset_name = "flair"
+    dataset_choice = args.dataset or dataset_name
+
     torch.manual_seed(RANDOM_SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if not os.path.isdir(ROOT_DIR):
-        raise FileNotFoundError(f"file not found: {ROOT_DIR}")
+    if dataset_choice == "flair":
 
-    #train_dataset, test_dataset = load_data(ROOT_DIR, test_size=0.2, seed=RANDOM_SEED)
-    train_dataset, test_dataset = load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
+        color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
+        rgb_to_class = lambda mask: utils.rgb_to_class_label(mask, color_map_rgb)
+        train_dataset, val_dataset = prepare_datasets_from_csvs(
+            train_csv_path=TRAIN_CSV_PATH,
+            val_csv_path= TEST_CSV_PATH,
+            rgb_to_class=rgb_to_class,
+            patch_size=PATCH_SIZE,
+            base_dir=BASE_DIR,
+            patchify_enabled=True,
+            debug_limit=None
+        )
+    else:  # fallback to DLR dataset
+         train_dataset,val_dataset = load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
 
+    print(f"Dataset chosen is : {dataset_choice}")
     print(f"\nTrain samples: {len(train_dataset)}")
-    print(f"Test samples: {len(test_dataset)}")
-    print("Train label range:", np.min(train_dataset.masks), "to", np.max(train_dataset.masks))
-    print("Test label range:", np.min(test_dataset.masks), "to", np.max(test_dataset.masks))
-    assert np.max(train_dataset.masks) < N_CLASSES
+    print(f"Val samples: {len(val_dataset)}")
 
-    writer = SummaryWriter(log_dir="runs/Unet_vs_DeepLab")
+    sample_image, sample_mask = train_dataset[0]
+    print("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
+    print("Unique labels (first mask):", torch.unique(sample_mask).tolist())
+
+    log_dir = f"runs/{dataset_choice}_experiment_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        # train_and_evaluate("unet", train_dataset, test_dataset, device, writer)
-        model = train_and_evaluate("deeplabv3+", train_dataset, test_dataset, device, writer)
-
-        color_map = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
-        reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions=4)
-    except KeyboardInterrupt :
-        raise KeyboardInterrupt("training interrupted due to keyboard interrupt")
+        model = train_and_evaluate("unet_resnet50", train_dataset, val_dataset, device, writer)
+    except KeyboardInterrupt:
+        print("Training interrupted manually.")
     finally:
         writer.close()
-
 
 # ================================
 # Training Script
