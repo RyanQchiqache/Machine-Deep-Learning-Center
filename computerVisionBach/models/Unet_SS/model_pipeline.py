@@ -33,7 +33,7 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 PATCH_SIZE = 512
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 20
+N_CLASSES = 19
 BATCH_SIZE = 12
 NUM_EPOCHS = 40
 LEARNING_RATE = 1e-4
@@ -218,12 +218,12 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
 
     elif model_name.lower() == "deeplabv3+":
         model = smp.DeepLabV3Plus(
-            encoder_name="resnet50",
+            encoder_name="resnet101",  # or "timm-efficientnet-b4" (requires `timm`)
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,
+            activation=None  # set to "softmax" if you want it inside the model
         ).to(device)
-
     elif model_name.lower() == "segformer":
         model = SegformerForSemanticSegmentation.from_pretrained(
             "nvidia/segformer-b2-finetuned-ade-512-512",
