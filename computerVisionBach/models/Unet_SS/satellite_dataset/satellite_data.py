@@ -35,7 +35,7 @@ class SatelliteDataset(Dataset):
     def _load_mask(self, path: str) -> np.ndarray:
         if path.endswith((".tif", ".tiff")):
             with rasterio.open(path) as src:
-                mask = src.read(1)  # Grayscale
+                mask = src.read(1)
         else:
             mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
 

@@ -33,9 +33,9 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 PATCH_SIZE = 512
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 10
+N_CLASSES = 20
 BATCH_SIZE = 12
-NUM_EPOCHS = 40
+NUM_EPOCHS = 25
 LEARNING_RATE = 1e-4
 RANDOM_SEED = 42
 MODELS = {}
@@ -48,6 +48,8 @@ BASE_DIR = "/home/ryqc/data/flair_dataset"
 transforms = T.Compose([
     T.RandomHorizontalFlip(p=0.5),
     T.RandomVerticalFlip(p=0.5),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
@@ -58,11 +60,7 @@ FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 def prepare_datasets_from_csvs(
     train_csv_path: str,
     val_csv_path: str,
-    rgb_to_class: Callable[[np.ndarray], np.ndarray],
-    patch_size: int,
-    base_dir: str = None,
-    patchify_enabled: bool = True,
-    debug_limit: int = None,
+    base_dir: str = None
 ) -> Tuple[FlairDataset, FlairDataset]:
     def load_csv(csv_path: str) -> List[Tuple[str, str]]:
         with open(csv_path, newline='') as f:
@@ -82,11 +80,22 @@ def prepare_datasets_from_csvs(
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
 
-    relabel_fn = lambda mask: utils.relabel_mask(mask, original_labels=FLAIR_USED_LABELS)
-    train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms, relabel_fn=relabel_fn)
-    val_dataset = FlairDataset(val_imgs, val_masks, transform=transforms, relabel_fn=relabel_fn)
+    relabel_fn = lambda mask: relabel_mask(mask, original_labels=FLAIR_USED_LABELS)
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms)
+    val_dataset = FlairDataset(val_imgs, val_masks,transform=transforms)
 
     return train_dataset, val_dataset
+
+def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
+    """
+    Remaps original sparse label values (e.g., [1, 2, 6, 18]) to contiguous [0, 1, 2, ..., N-1]
+    so CrossEntropyLoss works without index errors.
+    """
+    label_map = {orig: new for new, orig in enumerate(sorted(original_labels))}
+    remapped = np.zeros_like(mask)
+    for orig_label, new_label in label_map.items():
+        remapped[mask == orig_label] = new_label
+    return remapped
 
 # =====================================
 # patchify and load data DLR skyscapes
@@ -98,7 +107,7 @@ def load_folder(image_dir, mask_dir):
     X, y = [], []
     for img_path, mask_path in zip(images, masks):
         img = cv2.imread(img_path)
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(mask_path, cv2.COLOR_RGB2BGR)
         mask = utils.remap_mask(mask)
 
         h = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE
@@ -191,7 +200,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader, test_loader, criterion, optimizer, test_dataset, device, num_epochs=15, writer=None):
+def train(model, train_loader, test_loader, criterion, optimizer, device, num_epochs=15, writer=None):
     for epoch in range(num_epochs):
         loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         print(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
@@ -260,13 +269,12 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
         test_loader=test_loader,
         criterion=criterion,
         optimizer=optimizer,
-        test_dataset=test_dataset,
         device=device,
         num_epochs=NUM_EPOCHS,
         writer=writer
     )
     # Save model after training
-    model_save_path = f"checkpoints_flair/{model_name}_model.pth"
+    model_save_path = f"checkpoints_flair/{model_name}_model_flair.pth"
     os.makedirs("checkpoints", exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
     print(f"✅ Model saved to {model_save_path}")
@@ -366,38 +374,31 @@ def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions
 #=======================================
 
 def main():
-    parser = argparse.ArgumentParser()
+    """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
-    args = parser.parse_args()
+    args = parser.parse_args()"""
     dataset_name = "flair"
-    dataset_choice = args.dataset or dataset_name
+    """dataset_choice = args.dataset or dataset_name"""
 
     torch.manual_seed(RANDOM_SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if dataset_choice == "flair":
-
-        color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
-        rgb_to_class = lambda mask: utils.rgb_to_class_label(mask, color_map_rgb)
+    if dataset_name == "flair":
         train_dataset, val_dataset = prepare_datasets_from_csvs(
             train_csv_path=TRAIN_CSV_PATH,
             val_csv_path= TEST_CSV_PATH,
-            rgb_to_class=rgb_to_class,
-            patch_size=PATCH_SIZE,
-            base_dir=BASE_DIR,
-            patchify_enabled=True,
-            debug_limit=None
+            base_dir=BASE_DIR
         )
     else:  # fallback to DLR dataset
          train_dataset,val_dataset = load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
 
-    # Add this after loading datasets
+    """# Add this after loading datasets
     print("Checking FLAIR label range...")
     all_labels = torch.cat([train_dataset[i][1].flatten() for i in range(20)])  # Sample 20 masks
     print("Unique labels in train set:", torch.unique(all_labels))
-    print("N_CLASSES =", N_CLASSES)
+    print("N_CLASSES =", N_CLASSES)"""
 
-    print(f"Dataset chosen is : {dataset_choice}")
+    print(f"Dataset chosen is : {dataset_name}")
     print(f"\nTrain samples: {len(train_dataset)}")
     print(f"Val samples: {len(val_dataset)}")
 
@@ -405,7 +406,7 @@ def main():
     print("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
     print("Unique labels (first mask):", torch.unique(sample_mask).tolist())
 
-    log_dir = f"runs/{dataset_choice}_experiment_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_FLAIR{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
