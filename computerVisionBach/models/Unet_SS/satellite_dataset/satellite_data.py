@@ -33,22 +33,31 @@ class SatelliteDataset(Dataset):
         return img
 
     def _load_mask(self, path: str) -> np.ndarray:
-        if path.endswith((".tif", ".tiff")):
+        # Use rasterio only for GeoTIFFs
+        if path.lower().endswith((".tif", ".tiff")):
             with rasterio.open(path) as src:
                 mask = src.read(1)
         else:
             mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
+            if mask is None:
+                raise FileNotFoundError(f"Mask not found or unreadable: {path}")
+
+            # for normal case RGB
             if mask.ndim == 3 and mask.shape[-1] == 3:
                 if self.rgb_to_class:
                     mask = self.rgb_to_class(mask)
                 else:
+                    # Convert to grayscale if no mapping provided
                     mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
 
             elif mask.ndim == 2:
+                # Already grayscale
                 pass
             else:
-                raise ValueError(f"Unsupported mask shape: {mask.shape}")
+                raise ValueError(f"Unsupported mask format: {mask.shape} at {path}")
+
+        return mask.astype(np.int64)
 
         return mask.astype(np.int64)
 

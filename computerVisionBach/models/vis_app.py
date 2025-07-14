@@ -125,7 +125,7 @@ def predict_image_with_patches(image_np, model):
 # Main Streamlit Interface
 # ----------------------------------------
 st.sidebar.title("BEV Segmentation AI")
-model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet"])
+model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet", "mask2former"])
 model = load_model(model_choice)
 
 st.markdown("""

@@ -32,10 +32,11 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # Configuration
 # ================================
 PATCH_SIZE = 512
+OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
-BATCH_SIZE = 12
-NUM_EPOCHS = 25
+BATCH_SIZE = 16
+NUM_EPOCHS = 30
 LEARNING_RATE = 1e-4
 RANDOM_SEED = 42
 MODELS = {}
@@ -100,6 +101,28 @@ def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
 # =====================================
 # patchify and load data DLR skyscapes
 # =====================================
+
+def patchify_image_or_masks(image_mask:np.ndarray):
+    patch_size = PATCH_SIZE
+    step = patch_size - OVERLAP
+    H, W = image_mask.shape[:2]
+
+    pad_bottom = (patch_size - H // patch_size) % patch_size
+    pad_right = (patch_size - W // patch_size) % patch_size
+
+    if pad_bottom or pad_right:
+        image = np.pad(image_mask, ((0, pad_bottom), (0, pad_right), (0, 0)) if image_mask.ndim == 3 else ((0, pad_bottom), (0, pad_right)), mode= "constant", constant_values=0)
+        H,W = image.shape[:2]
+
+    patches = []
+
+    for top in range(0, H -patch_size + 1, step):
+        for left in range(0, W - patch_size + 1, step):
+            patch = image[top:top + patch_size, left:left + patch_size]
+            patches.append(patch)
+
+    return patches , (H, W)
+
 def load_folder(image_dir, mask_dir):
     images = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.jpg') or f.endswith('.png')])
     masks = sorted([os.path.join(mask_dir, f) for f in os.listdir(mask_dir) if f.endswith('.png')])
@@ -110,25 +133,17 @@ def load_folder(image_dir, mask_dir):
         mask = cv2.imread(mask_path, cv2.COLOR_RGB2BGR)
         mask = utils.remap_mask(mask)
 
-        h = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE
-        w = (img.shape[1] // PATCH_SIZE) * PATCH_SIZE
-        img = img[:h, :w]
-        mask = mask[:h, :w]
-
         if patchify_enabled:
-            img_patches = patchify(img, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
-            mask_patches = patchify(mask, (PATCH_SIZE, PATCH_SIZE), step=PATCH_SIZE)
+            image_p = patchify_image_or_masks(img)
+            mask_p = patchify_image_or_masks(mask)
+            X.append(image_p)
+            y.append(mask_p)
 
-            for i in range(img_patches.shape[0]):
-                for j in range(img_patches.shape[1]):
-                    X.append(img_patches[i, j, 0])
-                    y.append(mask_patches[i, j])
         else:
             X.append(img)
             y.append(mask)
 
-    return np.array(X), np.array(y)
-
+    return X, y
 
 def load_data_dlr(base_dir, dataset_type="SS_Dense"):
     base = os.path.join(base_dir, dataset_type)
@@ -150,8 +165,8 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
         y_train
     )
 
-    train_dataset = SatelliteDataset(X_train, y_train, rgb_to_class=color_map_rgb)
-    test_dataset = SatelliteDataset(X_val, y_val, rgb_to_class=color_map_rgb)
+    train_dataset = SatelliteDataset(X_train, y_train)
+    test_dataset = SatelliteDataset(X_val, y_val)
 
     return train_dataset, test_dataset
 
@@ -221,8 +236,8 @@ def train(model, train_loader, test_loader, criterion, optimizer, device, num_ep
 def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=None):
     print(f"\nTraining model: {model_name}")
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
     if model_name.lower() == "unet":
         model = UNet(3, N_CLASSES).to(device)
@@ -292,41 +307,51 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
     iou_macro = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
     iou_per_class = MulticlassJaccardIndex(num_classes=N_CLASSES, average=None).to(device)
 
-    all_preds, all_targets = [], []
-
     with torch.no_grad():
         for images, masks in tqdm(dataloader, desc="Evaluating", leave=False):
-            images, masks = images.to(device), masks.to(device)
+            images = images.to(device)
+            masks = masks.to(device)
 
+            # HuggingFace transformer models
             if isinstance(model, PreTrainedModel):
                 images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
                 inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
-                outputs = model(**inputs)
-                logits = outputs.logits
+                output = model(**inputs)
+                logits = output.logits
             else:
                 logits = model(images)
 
-            if outputs.shape[-2:] != masks.shape[-2:]:
-                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+            # Resize logits if needed
+            if logits.shape[-2:] != masks.shape[-2:]:
+                logits = torch.nn.functional.interpolate(
+                    logits, size=masks.shape[-2:], mode="bilinear", align_corners=False
+                )
 
-            preds = torch.argmax(outputs, dim=1)
-            all_preds.append(preds)
-            all_targets.append(masks)
+            preds = torch.argmax(logits, dim=1)
 
-    preds = torch.cat(all_preds)
-    targets = torch.cat(all_targets)
+            # Incremental metric updates (no memory explosion)
+            iou_macro.update(preds, masks)
+            iou_per_class.update(preds, masks)
 
-    miou = iou_macro(preds, targets)
-    per_class_ious = iou_per_class(preds, targets)
+    # Compute final metrics
+    miou = iou_macro.compute()
+    per_class_ious = iou_per_class.compute()
 
     print(f"\n✓ Mean IoU: {miou:.4f}")
     for i, class_iou in enumerate(per_class_ious):
         print(f"  └─ Class {i:02d} IoU: {class_iou:.4f}")
 
+    # Write to TensorBoard if available
     if writer and epoch is not None:
         writer.add_scalar("IoU/Mean", miou, epoch)
         for i, val in enumerate(per_class_ious):
             writer.add_scalar(f"IoU/Class_{i}", val, epoch)
+
+    # Reset metrics after evaluation (optional if reused)
+    iou_macro.reset()
+    iou_per_class.reset()
+
+
 
 
 # ================================
@@ -402,11 +427,11 @@ def main():
     print(f"\nTrain samples: {len(train_dataset)}")
     print(f"Val samples: {len(val_dataset)}")
 
-    sample_image, sample_mask = train_dataset[0]
+    """sample_image, sample_mask = train_dataset[0]
     print("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
-    print("Unique labels (first mask):", torch.unique(sample_mask).tolist())
+    print("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
 
-    log_dir = f"runs/{dataset_name}_experiment_FLAIR{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_FLAIR{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
