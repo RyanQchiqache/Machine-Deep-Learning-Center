@@ -78,14 +78,14 @@ def calculate_grad_cam(gradients, activations):
     return cam.cpu().numpy()
 
 
-def extract_bounding_boxes(cam, img, threshold=0.3):
+def extract_bounding_boxes(cam, img, threshold=0.05):
     heatmap = (cam * 255).astype(np.uint8)
     _, binary_map = cv2.threshold(heatmap, int(threshold * 255), 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(binary_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     img_np = np.array(img.resize((224, 224)))
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        cv2.rectangle(img_np, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.rectangle(img_np, (x, y), (x + w, y + h), (255, 0, 0), 2)
     return img_np
 
 
@@ -110,7 +110,7 @@ resized_img = cv2.cvtColor(np.array(img.resize((224, 224))), cv2.COLOR_RGB2BGR)
 
 # Convert CAM to heatmap — ensure shape and type are correct
 cam_resized = cv2.resize(cam, (224, 224))  # Resize CAM to match image size
-cam_uint8 = np.uint8(255 * cam_resized)    # Convert to 8-bit grayscale
+cam_uint8 = np.uint8(255 * cam_resized)  # Convert to 8-bit grayscale
 
 # Apply color map to CAM (jet → BGR)
 heatmap = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)  # (224, 224, 3)
@@ -126,7 +126,6 @@ overlay = cv2.addWeighted(resized_img, 0.5, heatmap, 0.5, 0)
 
 # Convert to RGB for matplotlib display
 overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
-
 
 # Plot Grad-CAM heatmap, bounding box, and smooth overlay
 plt.figure(figsize=(12, 4))
@@ -155,7 +154,6 @@ plt.subplot(1, 2, 2)
 plt.imshow(visual)
 plt.title("Detected Region")
 plt.show()"""
-
 
 # Task 1.5 & 1.6: Top-5 Predictions Visualization
 top5_classes = output[0].topk(5).indices.tolist()
@@ -195,7 +193,7 @@ def task2_forward_hook(module: Module, input: Tuple[Tensor], output: Tensor):
 final_conv.register_forward_hook(task2_forward_hook)
 
 # Task 2.2: Load Image and Store Activation
-img_path = 'input/Bulldog.png'
+img_path = 'ComputerVisionCourse/exercise03/input/Bulldog.png'
 img = Image.open(img_path).convert('RGB')
 input_tensor = preprocess(img).unsqueeze(0)
 activations.clear()
@@ -203,11 +201,11 @@ activations.clear()
 with torch.no_grad():
     output = model(input_tensor)
 
-top_classes = output[0].topk(3).indices.tolist()
+top_classes = output[0].topk(3).indices.tolist()  #(idk like "Bulldog, Boxer, Golden retriever or smth")
 
 # Task 2.3–2.5: Compute CAMs and Overlay
 feature_map = activations[-1][0]
-fc_weights = model.fc.weight.detach()
+fc_weights = model.fc.weight.detach()  #shape (num_classes, C)
 segmentation = np.zeros((224, 224), dtype=np.uint8)
 original_img = np.array(img.resize((224, 224)))
 overlay = np.zeros_like(original_img, dtype=np.uint8)
@@ -215,7 +213,7 @@ overlay = np.zeros_like(original_img, dtype=np.uint8)
 for i, cls in enumerate(top_classes):
     weights = fc_weights[cls]
     cam = torch.einsum('c,chw->hw', weights, feature_map)
-    cam = torch.clamp(cam, min=0)
+    cam = torch.clamp(cam, min=0)# like relu
     cam -= cam.min()
     cam /= cam.max() + 1e-8
     cam = cam.cpu().numpy()
