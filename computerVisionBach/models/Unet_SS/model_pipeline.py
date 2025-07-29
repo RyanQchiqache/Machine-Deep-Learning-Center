@@ -1,3 +1,4 @@
+import copy
 import os
 import cv2
 import sys
@@ -45,6 +46,7 @@ patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
 TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
 TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
+VAL_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-val01.csv"
 BASE_DIR = "/home/ryqc/data/flair_dataset"
 transforms = T.Compose([
     T.RandomHorizontalFlip(p=0.5),
@@ -61,6 +63,7 @@ FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 def prepare_datasets_from_csvs(
     train_csv_path: str,
     val_csv_path: str,
+    test_csv_path: str,
     base_dir: str = None
 ) -> Tuple[FlairDataset, FlairDataset]:
     def load_csv(csv_path: str) -> List[Tuple[str, str]]:
@@ -74,18 +77,22 @@ def prepare_datasets_from_csvs(
     # Load CSVs
     train_pairs = load_csv(train_csv_path)
     val_pairs = load_csv(val_csv_path)
+    test_pairs = load_csv(test_csv_path)
 
     train_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in train_pairs]
     val_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in val_pairs]
+    test_pairs = [(resolve_path(img), resolve_path(mask) for img, mask in test_pairs)]
 
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
+    test_imgs, test_masks = zip(*test_pairs)
 
     relabel_fn = lambda mask: relabel_mask(mask, original_labels=FLAIR_USED_LABELS)
     train_dataset = FlairDataset(train_imgs, train_masks, transform=transforms)
     val_dataset = FlairDataset(val_imgs, val_masks,transform=transforms)
+    test_dataset = FlairDataset(test_imgs, test_masks, transform=transforms)
 
-    return train_dataset, val_dataset
+    return train_dataset, val_dataset, test_dataset
 
 def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
     """
@@ -197,7 +204,6 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         else:
             outputs = model(images)
 
-        # Resize if necessary
         if outputs.shape[-2:] != masks.shape[-2:]:
             outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
 
@@ -215,7 +221,10 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader, test_loader, criterion, optimizer, device, num_epochs=15, writer=None):
+def train(model, train_loader,val_loader, criterion, optimizer, device, num_epochs=15, writer=None):
+    best_miou = 0.0
+    best_model_wts = copy.deepcopy(model.state_dict())
+
     for epoch in range(num_epochs):
         loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         print(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
@@ -225,19 +234,24 @@ def train(model, train_loader, test_loader, criterion, optimizer, device, num_ep
 
         model.eval()
         with torch.no_grad():
-            model.eval()
-            evaluate(model, test_loader, device)
+            miou = evaluate(model, val_loader, device ,epoch, writer=writer)
+        if miou > best_miou:
+            best_miou = miou
+            best_model_wts = copy.deepcopy(model.state_dict())
             """if (epoch + 1) % 10 == 0 or epoch == 1:
                 val_image = test_dataset[0][0].unsqueeze(0).to(device)
                 _, features = model(val_image, return_features=True)
                 for name in ["bottleneck", "enc1", "enc2", "dec3", "dec4"]:
                     visualisation.visualise_feature_map(features[name], f"{name} (Epoch {epoch + 1})")"""
+    model.load_state_dict(best_model_wts)
 
-def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=None):
+def train_and_evaluate(model_name, train_dataset,val_dataset,test_dataset, device, writer=None):
     print(f"\nTraining model: {model_name}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+
 
     if model_name.lower() == "unet":
         model = UNet(3, N_CLASSES).to(device)
@@ -281,7 +295,7 @@ def train_and_evaluate(model_name, train_dataset, test_dataset, device, writer=N
     train(
         model=model,
         train_loader=train_loader,
-        test_loader=test_loader,
+        val_loader=val_loader,
         criterion=criterion,
         optimizer=optimizer,
         device=device,
@@ -351,6 +365,8 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
     iou_macro.reset()
     iou_per_class.reset()
 
+    return miou
+
 
 
 
@@ -411,7 +427,8 @@ def main():
     if dataset_name == "flair":
         train_dataset, val_dataset = prepare_datasets_from_csvs(
             train_csv_path=TRAIN_CSV_PATH,
-            val_csv_path= TEST_CSV_PATH,
+            val_csv_path= VAL_CSV_PATH,
+            test_csv_path= TEST_CSV_PATH,
             base_dir=BASE_DIR
         )
     else:  # fallback to DLR dataset
