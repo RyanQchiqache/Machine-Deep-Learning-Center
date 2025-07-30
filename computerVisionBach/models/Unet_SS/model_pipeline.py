@@ -10,6 +10,7 @@ from patchify import patchify
 from typing import Callable, Tuple, List
 import csv
 from torch.utils.data import DataLoader
+from huggingface_hub import hf_hub_download
 import torch
 import torch.nn as nn
 from datetime import datetime
@@ -19,7 +20,8 @@ from segmentation_models_pytorch.losses import DiceLoss
 from torchmetrics.classification import MulticlassJaccardIndex
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
-from computerVisionBach.models.Unet_SS.Unet import UNet
+from computerVisionBach.models.Unet_SS.SS_models.Unet_resnet34 import UNetResNet34
+from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
 from torch.utils.tensorboard import SummaryWriter
 from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
@@ -32,7 +34,7 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 # Configuration
 # ================================
-PATCH_SIZE = 512
+PATCH_SIZE = 256
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
@@ -81,7 +83,7 @@ def prepare_datasets_from_csvs(
 
     train_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in train_pairs]
     val_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in val_pairs]
-    test_pairs = [(resolve_path(img), resolve_path(mask) for img, mask in test_pairs)]
+    test_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in test_pairs]
 
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
@@ -109,26 +111,33 @@ def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
 # patchify and load data DLR skyscapes
 # =====================================
 
-def patchify_image_or_masks(image_mask:np.ndarray):
+def patchify_image_or_masks(image_mask: np.ndarray):
     patch_size = PATCH_SIZE
-    step = patch_size - OVERLAP
+    step = int(patch_size * (1 - OVERLAP))  # fix: step must be int
     H, W = image_mask.shape[:2]
 
-    pad_bottom = (patch_size - H // patch_size) % patch_size
-    pad_right = (patch_size - W // patch_size) % patch_size
+    pad_bottom = (patch_size - H % patch_size) % patch_size
+    pad_right = (patch_size - W % patch_size) % patch_size
 
     if pad_bottom or pad_right:
-        image = np.pad(image_mask, ((0, pad_bottom), (0, pad_right), (0, 0)) if image_mask.ndim == 3 else ((0, pad_bottom), (0, pad_right)), mode= "constant", constant_values=0)
-        H,W = image.shape[:2]
+        image = np.pad(
+            image_mask,
+            ((0, pad_bottom), (0, pad_right), (0, 0)) if image_mask.ndim == 3 else ((0, pad_bottom), (0, pad_right)),
+            mode="constant",
+            constant_values=0
+        )
+        H, W = image.shape[:2]
+    else:
+        image = image_mask  # don't forget to assign image
 
     patches = []
-
-    for top in range(0, H -patch_size + 1, step):
+    for top in range(0, H - patch_size + 1, step):
         for left in range(0, W - patch_size + 1, step):
             patch = image[top:top + patch_size, left:left + patch_size]
             patches.append(patch)
 
-    return patches , (H, W)
+    return patches, (H, W)
+
 
 def load_folder(image_dir, mask_dir):
     images = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.jpg') or f.endswith('.png')])
@@ -140,11 +149,15 @@ def load_folder(image_dir, mask_dir):
         mask = cv2.imread(mask_path, cv2.COLOR_RGB2BGR)
         mask = utils.remap_mask(mask)
 
+        unique_classes = np.unique(mask)
+        print(f"{os.path.basename(mask_path)} → Classes present: {unique_classes}")
+
         if patchify_enabled:
-            image_p = patchify_image_or_masks(img)
-            mask_p = patchify_image_or_masks(mask)
-            X.append(image_p)
-            y.append(mask_p)
+            image_p, _ = patchify_image_or_masks(img)
+            mask_p, _ = patchify_image_or_masks(mask)
+            X.extend(image_p)
+            y.extend(mask_p)
+
 
         else:
             X.append(img)
@@ -245,12 +258,12 @@ def train(model, train_loader,val_loader, criterion, optimizer, device, num_epoc
                     visualisation.visualise_feature_map(features[name], f"{name} (Epoch {epoch + 1})")"""
     model.load_state_dict(best_model_wts)
 
-def train_and_evaluate(model_name, train_dataset,val_dataset,test_dataset, device, writer=None):
+def train_and_evaluate(model_name, train_dataset,val_dataset, device, writer=None):
     print(f"\nTraining model: {model_name}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+    #test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
 
     if model_name.lower() == "unet":
@@ -284,7 +297,6 @@ def train_and_evaluate(model_name, train_dataset,val_dataset,test_dataset, devic
             in_channels=3,
             classes=N_CLASSES,
         ).to(device)
-
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
@@ -303,13 +315,17 @@ def train_and_evaluate(model_name, train_dataset,val_dataset,test_dataset, devic
         writer=writer
     )
     # Save model after training
-    model_save_path = f"checkpoints_flair/{model_name}_model_flair.pth"
-    os.makedirs("checkpoints", exist_ok=True)
+    # Base checkpoint directory (relative to this script)
+    checkpoint_base = os.path.join(os.path.dirname(__file__), "checkpoints")
+    os.makedirs(checkpoint_base, exist_ok=True)
+    custom_name = f"{model_name}_model_dlr_norUNET.pth"
+    # Final model save path
+    model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
     print(f"✅ Model saved to {model_save_path}")
 
-    evaluate(model, test_loader, device)
-    visualisation.visualize_prediction(model, test_loader, device)
+    evaluate(model, val_loader, device)
+    visualisation.visualize_prediction(model, val_loader, device)
 
     return model
 
@@ -418,7 +434,7 @@ def main():
     """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
     args = parser.parse_args()"""
-    dataset_name = "flair"
+    dataset_name = None
     """dataset_choice = args.dataset or dataset_name"""
 
     torch.manual_seed(RANDOM_SEED)

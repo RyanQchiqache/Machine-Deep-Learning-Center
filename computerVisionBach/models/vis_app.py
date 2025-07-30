@@ -2,6 +2,7 @@ import sys
 import os
 import tempfile
 import atexit
+from typing import OrderedDict
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 from transformers.modeling_utils import PreTrainedModel
@@ -13,9 +14,8 @@ import torch
 from io import BytesIO
 import rasterio
 import cv2
-
 from computerVisionBach.models.Unet_SS import utils
-from computerVisionBach.models.Unet_SS.model_pipeline import UNet, smp, PATCH_SIZE, N_CLASSES
+from computerVisionBach.models.Unet_SS.model_pipeline import UNet, smp, PATCH_SIZE, N_CLASSES, OVERLAP
 
 # ----------------------------------------
 # ⚙️ Config
@@ -62,6 +62,42 @@ def load_model(model_name="deeplabv3+"):
             ignore_mismatched_sizes=True,
         )
         ckpt = "computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth"
+    elif model_name == "unet_resnet34_flair":
+        # Init model (15 classes, 5-channel input)
+        model = smp.Unet(
+            encoder_name="resnet34",
+            encoder_weights=None,
+            in_channels=5,
+            classes=15,
+        )
+
+        # Load and clean checkpoint
+        ckpt_path = "/home/ryqc/data/flair_rgbie_15cl.pth"
+        raw_ckpt = torch.load(ckpt_path, map_location="cpu")
+
+        # Handle either flat or nested format
+        if "model" in raw_ckpt and "seg_model" in raw_ckpt["model"]:
+            raw_state_dict = raw_ckpt["model"]["seg_model"]
+        elif "seg_model" in raw_ckpt:
+            raw_state_dict = raw_ckpt["seg_model"]
+        else:
+            raw_state_dict = raw_ckpt  # fallback
+
+        # Remove prefix if needed
+        clean_state_dict = {}
+        for k, v in raw_state_dict.items():
+            new_k = k.replace("model.seg_model.", "").replace("seg_model.", "")
+            clean_state_dict[new_k] = v
+
+        # Load weights while skipping mismatched segmentation head
+        model.load_state_dict({
+            k: v for k, v in clean_state_dict.items()
+            if not k.startswith("segmentation_head.0")
+        }, strict=False)
+
+        model.eval()
+        return model.to(device)
+
     else:
         raise ValueError("Unsupported model name.")
 
@@ -80,13 +116,20 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 
 def predict_image_with_patches(image_np, model):
     from patchify import patchify, unpatchify
+    import torch.nn.functional as F
 
     h, w, _ = image_np.shape
-    h_crop = (h // PATCH_SIZE) * PATCH_SIZE
-    w_crop = (w // PATCH_SIZE) * PATCH_SIZE
-    image_cropped = image_np[:h_crop, :w_crop]
+    pad_h = (PATCH_SIZE - h % PATCH_SIZE) % PATCH_SIZE
+    pad_w = (PATCH_SIZE - w % PATCH_SIZE) % PATCH_SIZE
 
-    patches = patchify(image_cropped, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
+    # Pad image on bottom and right
+    image_padded = np.pad(
+        image_np,
+        ((0, pad_h), (0, pad_w), (0, 0)),
+        mode="reflect"
+    )
+
+    patches = patchify(image_padded, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
     mask_patches = []
 
     with torch.no_grad():
@@ -103,21 +146,18 @@ def predict_image_with_patches(image_np, model):
                     output = model(tensor)
 
                 if output.shape[-2:] != patch.shape[:2]:
-                    output = torch.nn.functional.interpolate(output, size=patch.shape[:2], mode="bilinear", align_corners=False)
+                    output = F.interpolate(output, size=patch.shape[:2], mode="bilinear", align_corners=False)
 
                 pred = torch.argmax(output, dim=1).cpu().numpy()[0]
                 row.append(pred)
             mask_patches.append(row)
 
     mask_array = np.stack([np.stack(row, axis=0) for row in mask_patches], axis=0)
-    full_mask = unpatchify(mask_array, (h_crop, w_crop))
+    full_mask = unpatchify(mask_array, image_padded.shape[:2])
 
-    if (h_crop != h) or (w_crop != w):
-        padded = np.zeros((h, w), dtype=np.uint8)
-        padded[:h_crop, :w_crop] = full_mask
-        return padded
+    # Crop back to original size
+    return full_mask[:h, :w]
 
-    return full_mask
 
 
 
@@ -125,7 +165,7 @@ def predict_image_with_patches(image_np, model):
 # Main Streamlit Interface
 # ----------------------------------------
 st.sidebar.title("BEV Segmentation AI")
-model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet", "mask2former"])
+model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet", "mask2former", "unet_resnet34_flair"])
 model = load_model(model_choice)
 
 st.markdown("""
@@ -138,26 +178,44 @@ if not uploaded_file:
     st.stop()
 
 # ----------------------------------------
-# Read image
+# Read image (JPG/PNG or TIF)
 # ----------------------------------------
 file_ext = uploaded_file.name.split(".")[-1].lower()
 if file_ext in ["jpg", "jpeg", "png"]:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
+
+    if model_choice == "unet_resnet34_flair":
+        # Add dummy IR + Elevation for compatibility
+        dummy_ir = np.zeros((image_np.shape[0], image_np.shape[1], 1), dtype=image_np.dtype)
+        dummy_elev = np.zeros((image_np.shape[0], image_np.shape[1], 1), dtype=image_np.dtype)
+        image_np = np.concatenate((image_np, dummy_ir, dummy_elev), axis=2)
+        st.warning("Uploaded RGB image. Added dummy IR + Elevation channels to match 5-channel model input.")
+
 elif file_ext in ["tif", "tiff"]:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as tmp:
         tmp.write(uploaded_file.read())
         tmp_path = tmp.name
     atexit.register(lambda: os.remove(tmp_path) if os.path.exists(tmp_path) else None)
+
     with rasterio.open(tmp_path) as src:
-        img = src.read()
-        img = np.transpose(img, (1, 2, 0))
-    if img.shape[2] >= 3:
-        image_np = img[:, :, :3]
+        img = src.read()  # shape: (bands, H, W)
+        img = np.transpose(img, (1, 2, 0))  # to HWC
+
+    if model_choice == "unet_resnet34_flair":
+        if img.shape[2] < 5:
+            st.error("FLAIR model requires 5 bands: RGB + IR + Elevation.")
+            st.stop()
+        image_np = img[:, :, :5]
     else:
-        st.error("TIF must have at least 3 channels.")
-        st.stop()
-    image = Image.fromarray((image_np / image_np.max() * 255).astype(np.uint8))
+        if img.shape[2] < 3:
+            st.error("TIF must have at least 3 bands (RGB).")
+            st.stop()
+        image_np = img[:, :, :3]
+
+    # Convert to displayable RGB for UI
+    image = Image.fromarray((image_np[:, :, :3] / image_np[:, :, :3].max() * 255).astype(np.uint8))
+
 else:
     st.error("Unsupported file type.")
     st.stop()
@@ -173,7 +231,18 @@ if st.button("🧠 Run Segmentation"):
     with st.spinner("Segmenting..."):
         pred_mask = predict_image_with_patches(image_np, model)
         pred_rgb = utils.class_to_rgb(pred_mask, color_map_rgb)
-        overlay = cv2.addWeighted(image_np, 0.6, pred_rgb, 0.4, 0)
+        # If input image has more than 3 channels, extract RGB only
+        if image_np.shape[2] > 3:
+            image_rgb = image_np[:, :, :3]
+        else:
+            image_rgb = image_np
+
+        # Resize prediction if needed
+        if pred_rgb.shape != image_rgb.shape:
+            pred_rgb = cv2.resize(pred_rgb, (image_rgb.shape[1], image_rgb.shape[0]))
+
+        # Now blend
+        overlay = cv2.addWeighted(image_rgb, 0.6, pred_rgb, 0.4, 0)
 
     st.subheader("🧩 Segmentation Results")
     col1, col2 = st.columns(2)
