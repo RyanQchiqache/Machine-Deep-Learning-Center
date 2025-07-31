@@ -1,4 +1,4 @@
-import cv2
+"""import cv2
 from typing import List, Tuple
 import numpy as np
 from PIL import Image
@@ -43,7 +43,7 @@ def gray_scale_patch(patch: np.ndarray) -> np.ndarray:
 
 
 def insert_patch(image: np.ndarray, patch: np.ndarray, x: int, y: int) -> np.ndarray:
-    """Insert a grayscale patch into the original image."""
+    """"""Insert a grayscale patch into the original image.""""""
     patch_rgb = patch
     image_copy = image.copy()
     image_copy[y:y + patch.shape[0], x:x + patch.shape[1]] = patch_rgb
@@ -78,4 +78,52 @@ patched_up_image: Image.Image = put_patches_in_images(image_np, [gray_random, gr
 plt.imshow(patched_up_image)
 plt.title("final image with patches in grayscale")
 plt.axis("off")
-plt.show()
+plt.show()"""
+
+import numpy as np
+from pprint import pprint
+
+# Input image
+x = np.array([
+    [1, 0, 0, 1, 1, 0],
+    [0, 1, 0, 0, 0, 1],
+    [0, 0, 1, 1, 0, 0],
+    [1, 0, 0, 0, 1, 0],
+    [1, 0, 0, 0, 0, 1]
+])
+
+# Kernels
+w1 = np.array([[1, 0], [0, 1]])
+w2 = np.array([[1, 0], [1, 0]])
+w3 = np.array([[1, 1], [0, 0]])
+kernels = [w1, w2, w3]
+bias = -1
+
+def apply_conv_relu(x, kernel, bias, stride=1):
+    kH, kW = kernel.shape
+    H, W = x.shape
+
+    out_H = (H - kH) // stride + 1
+    out_W = (W - kW) // stride + 1
+
+    out = np.zeros((out_H, out_W))
+    for i in range(out_H):
+        for j in range(out_W):
+            patch = x[i*stride:i*stride+kH, j*stride:j*stride+kW]
+            out[i, j] = np.sum(patch * kernel) + bias
+
+    return np.maximum(0, out)
+
+# Apply each kernel with stride (you can change stride here)
+stride = 1
+outputs = []
+for kernel in kernels:
+    result = apply_conv_relu(x, kernel, bias, stride)
+    outputs.append(result)
+
+# Stack into a 3D tensor
+tensor_output = np.stack(outputs, axis=0)
+
+# Print
+print("Final output tensor shape:", tensor_output.shape)
+pprint(tensor_output)

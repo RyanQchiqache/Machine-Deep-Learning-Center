@@ -49,7 +49,6 @@ patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
 TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
 TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
-VAL_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-val01.csv"
 BASE_DIR = "/home/ryqc/data/flair_dataset"
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
