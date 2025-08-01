@@ -2,7 +2,6 @@ import sys
 import os
 import tempfile
 import atexit
-from typing import OrderedDict
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 from transformers.modeling_utils import PreTrainedModel
@@ -15,7 +14,7 @@ from io import BytesIO
 import rasterio
 import cv2
 from computerVisionBach.models.Unet_SS import utils
-from computerVisionBach.models.Unet_SS.model_pipeline import UNet, smp, PATCH_SIZE, N_CLASSES, OVERLAP
+from computerVisionBach.models.model_pipeline import smp, PATCH_SIZE, N_CLASSES
 
 # ----------------------------------------
 # ⚙️ Config
@@ -37,7 +36,9 @@ def load_model(model_name="deeplabv3+"):
             in_channels=3,
             classes=N_CLASSES,
         )
-        ckpt = "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth"
+        #ckpt = "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth"
+        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_norUNET.pth"
+
     elif model_name == "deeplabv3+":
         model = smp.DeepLabV3Plus(
             encoder_name="resnet50",
@@ -61,7 +62,9 @@ def load_model(model_name="deeplabv3+"):
             num_labels=N_CLASSES,
             ignore_mismatched_sizes=True,
         )
-        ckpt = "computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth"
+        #ckpt = "computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth"
+        #ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_norUNET.pth"
+        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_newUNETREST.pth"
     elif model_name == "unet_resnet34_flair":
         # Init model (15 classes, 5-channel input)
         model = smp.Unet(
