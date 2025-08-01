@@ -66,13 +66,20 @@ class SatelliteDataset(Dataset):
             image = self._load_image(self.images[idx])
             mask = self._load_mask(self.masks[idx])
         else:
-            image = self.images[idx].astype(np.float32) / 255.0
+            image = self.images[idx]
             mask = self.masks[idx].astype(np.int64)
 
         if self.relabel_fn is not None:
+            assert isinstance(mask, np.ndarray), "Mask must be a NumPy array before relabeling"
             mask = self.relabel_fn(mask)
 
-        image = torch.from_numpy(image).permute(2, 0, 1).contiguous()
-        mask = torch.from_numpy(mask).squeeze()
+        if self.transform:
+            image = self.transform(image)
+        else:
+            image = torch.from_numpy(image).permute(2, 0, 1).contiguous()
 
-        return image, mask
+        if mask is not None:
+            mask = torch.from_numpy(mask).long()
+            return image, mask
+        else:
+            return image
