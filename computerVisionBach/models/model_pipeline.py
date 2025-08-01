@@ -36,13 +36,13 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 # Configuration
 # ================================
-PATCH_SIZE = 1024
+PATCH_SIZE = 2000
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
 BATCH_SIZE = 16
 NUM_EPOCHS = 50
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
 MODELS = {}
 patchify_enabled = True
@@ -57,10 +57,10 @@ FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=255)
-    #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
+    criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    return ce_loss, optimizer
+    return criterion, optimizer
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
@@ -190,8 +190,6 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     evaluate(model, test_loader, device, writer=writer)
     visualisation.visualize_prediction(model, test_loader, device)
-
-    return model
 
 # ================================
 # Evaluation
@@ -332,7 +330,7 @@ def main():
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        model = train_and_evaluate("unet_resnet50", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("unet_resnet50", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
         print("Training interrupted manually.")
     finally:

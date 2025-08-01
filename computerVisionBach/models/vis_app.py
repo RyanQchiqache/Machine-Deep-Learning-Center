@@ -14,8 +14,9 @@ from io import BytesIO
 import rasterio
 import cv2
 from computerVisionBach.models.Unet_SS import utils
-from computerVisionBach.models.model_pipeline import smp, PATCH_SIZE, N_CLASSES
+from computerVisionBach.models.model_pipeline import smp, N_CLASSES
 
+PATCH_SIZE = 512
 # ----------------------------------------
 # ⚙️ Config
 # ----------------------------------------
@@ -170,12 +171,10 @@ def predict_image_with_patches(image_np, model):
 st.sidebar.title("BEV Segmentation AI")
 model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet", "mask2former", "unet_resnet34_flair"])
 model = load_model(model_choice)
-
 st.markdown("""
     <h1 style='text-align: center; color: #14C4FF; font-size: 3rem;'>🚀 Real-Time Aerial Image Segmentation</h1>
     <p style='text-align: center; font-size: 1.2rem;'>Upload satellite or aerial image and segment it using a pretrained model.</p>
 """, unsafe_allow_html=True)
-
 uploaded_file = st.file_uploader("📤 Upload an aerial or urban image", type=["jpg", "jpeg", "png", "tif", "tiff"])
 if not uploaded_file:
     st.stop()
