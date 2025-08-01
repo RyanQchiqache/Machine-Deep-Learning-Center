@@ -1,3 +1,5 @@
+from collections import Counter
+
 import numpy as np
 
 def rgb_to_class_label(mask, color_map):
@@ -43,6 +45,13 @@ def remap_mask(mask):
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+
+def count_class_distribution(masks):
+    total_counts = Counter()
+    for mask in masks:
+        values, counts = np.unique(mask, return_counts=True)
+        total_counts.update(dict(zip(values, counts)))
+    return total_counts
 
 
 def create_color_to_class(label_dict):
