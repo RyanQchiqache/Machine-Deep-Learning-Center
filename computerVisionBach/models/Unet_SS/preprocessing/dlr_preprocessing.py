@@ -10,14 +10,19 @@ from computerVisionBach.models.Unet_SS import visualisation
 from transformers import SegformerImageProcessor
 from torchvision import transforms as T
 from computerVisionBach.models.Unet_SS import utils
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 patch_size, overlap = 512, 0.5
-transforms = T.Compose([
-    T.ToTensor(),
-    T.RandomHorizontalFlip(p=0.5),
-    T.RandomVerticalFlip(p=0.5),
-    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+transforms = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.Normalize(mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]),
+    ToTensorV2()
 ])
+
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
 # =====================================
@@ -58,6 +63,7 @@ def load_folder(image_dir, mask_dir=None, patchify_enabled:bool=True):
         masks = sorted([os.path.join(mask_dir, f) for f in os.listdir(mask_dir) if f.endswith('.png')])
         for img_path, mask_path in zip(images, masks):
             img = cv2.imread(img_path).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
 
             unique_classes = np.unique(mask)
@@ -124,7 +130,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
     """for i, (_, mask) in enumerate(train_dataset):
         uniques = torch.unique(mask)
         print(f"Sample {i}: Unique labels:", uniques.tolist())
-        valid = (uniques == 255) | ((uniques >= 0) & (uniques < num_classes))
+        valid = (uniques == 255) | ((uniques >= 0) AC& (uniques < num_classes))
         assert torch.all(valid), f"Invalid label(s) in sample {i}: {uniques.tolist()}"""
 
     return train_dataset, val_dataset, test_dataset

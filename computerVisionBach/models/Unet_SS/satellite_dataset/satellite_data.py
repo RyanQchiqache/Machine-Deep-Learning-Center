@@ -59,27 +59,34 @@ class SatelliteDataset(Dataset):
 
         return mask.astype(np.int64)
 
-        return mask.astype(np.int64)
-
     def __getitem__(self, idx):
         if self.from_paths:
             image = self._load_image(self.images[idx])
-            mask = self._load_mask(self.masks[idx])
+            mask = self._load_mask(self.masks[idx]) if self.masks is not None else None
         else:
             image = self.images[idx]
-            mask = self.masks[idx].astype(np.int64)
+            mask = self.masks[idx].astype(np.int64) if self.masks is not None else None
 
-        if self.relabel_fn is not None:
+        if mask is not None and self.relabel_fn is not None:
             assert isinstance(mask, np.ndarray), "Mask must be a NumPy array before relabeling"
             mask = self.relabel_fn(mask)
 
         if self.transform:
-            image = self.transform(image)
+            if mask is not None:
+                transformed = self.transform(image=image, mask=mask)
+                image = transformed["image"]
+                mask = transformed["mask"]
+            else:
+                transformed = self.transform(image=image)
+                image = transformed["image"]
+                mask = None
         else:
-            image = torch.from_numpy(image).permute(2, 0, 1).contiguous()
+            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
+            if mask is not None:
+                mask = torch.from_numpy(mask).long()
 
         if mask is not None:
-            mask = torch.from_numpy(mask).long()
             return image, mask
         else:
             return image
+
