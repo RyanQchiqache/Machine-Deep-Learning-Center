@@ -49,6 +49,7 @@ patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
 TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
 TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
+VAL_CSV_PATH = ""
 BASE_DIR = "/home/ryqc/data/flair_dataset"
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
@@ -56,10 +57,11 @@ FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=255)
-    criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
+    #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
 
-    return criterion, optimizer
+    return ce_loss, scheduler, optimizer
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
@@ -107,7 +109,7 @@ def train(model, train_loader,val_loader, criterion, optimizer, device, num_epoc
 
         model.eval()
         with torch.no_grad():
-            miou = evaluate(model, val_loader, device ,epoch, writer=writer)
+            miou = evaluate(model, val_loader, device ,epoch=None, writer=writer)
 
         visualize_val_predictions(model, val_loader, device, epoch, processor=processor, writer=writer)
 
@@ -163,7 +165,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
-    criterion, optimizer = get_loss_and_optimizer(model)
+    criterion, scheduler, optimizer = get_loss_and_optimizer(model)
 
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
 
