@@ -85,8 +85,4 @@ class SatelliteDataset(Dataset):
             if mask is not None:
                 mask = torch.from_numpy(mask).long()
 
-        if mask is not None:
-            return image, mask
-        else:
-            return image
-
+        return image, mask
