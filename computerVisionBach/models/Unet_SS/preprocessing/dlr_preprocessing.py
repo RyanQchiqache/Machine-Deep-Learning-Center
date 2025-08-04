@@ -17,6 +17,7 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 patch_size, overlap = 512, 0.5
 transforms = A.Compose([
     A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
     A.VerticalFlip(p=0.5),
     A.Normalize(mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]),
