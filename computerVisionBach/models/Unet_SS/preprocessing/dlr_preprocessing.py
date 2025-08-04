@@ -23,7 +23,10 @@ transforms = A.Compose([
                 std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
-
+val_tf = A.Compose([
+    A.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]),
+    ToTensorV2()
+])
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 
 # =====================================
@@ -124,8 +127,8 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
         return relabeled
 
     train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
-    val_dataset = SatelliteDataset(X_val, y_val, transform=transforms, relabel_fn=relabel_fn)
-    test_dataset = SatelliteDataset(X_test, masks=None)
+    val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
+    test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
 
     num_classes = 20  # or whatever you set in the model
     """for i, (_, mask) in enumerate(train_dataset):
