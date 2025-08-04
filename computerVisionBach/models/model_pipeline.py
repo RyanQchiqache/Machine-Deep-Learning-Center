@@ -1,33 +1,22 @@
 import copy
 import os
-import cv2
 import sys
-import numpy as np
-import argparse
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from patchify import patchify
-from typing import Callable, Tuple, List
-import csv
 from torch.utils.data import DataLoader
-from huggingface_hub import hf_hub_download
 import torch
+from loguru import logger
 import torch.nn as nn
 from datetime import datetime
-from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
-from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
 from segmentation_models_pytorch.losses import DiceLoss
 from torchmetrics.classification import MulticlassJaccardIndex, MulticlassAccuracy
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
-from computerVisionBach.models.Unet_SS.SS_models.Unet_resnet34 import UNetResNet34
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
 from torch.utils.tensorboard import SummaryWriter
 from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers.modeling_utils import PreTrainedModel
-from torchvision import transforms as T
-from computerVisionBach.models.Unet_SS import utils
 from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import prepare_datasets_from_csvs
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
@@ -36,14 +25,15 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 # Configuration
 # ================================
-PATCH_SIZE = 2000
+PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
 BATCH_SIZE = 16
-NUM_EPOCHS = 50
+NUM_EPOCHS = 35
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
+PATIENCE = 7
 MODELS = {}
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
@@ -96,35 +86,48 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader,val_loader, criterion, optimizer, device, num_epochs, writer=None):
+def train(model, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
     best_miou = 0.0
     best_model_wts = copy.deepcopy(model.state_dict())
+    epochs_without_improvement = 0
 
     for epoch in range(num_epochs):
         loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        print(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
+        logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
 
         if writer:
             writer.add_scalar("Loss/train", loss, epoch)
 
         model.eval()
         with torch.no_grad():
-            miou = evaluate(model, val_loader, device ,epoch=None, writer=writer)
+            miou = evaluate(model, val_loader, device ,epoch=epoch, writer=writer)
 
-        visualize_val_predictions(model, val_loader, device, epoch, processor=processor, writer=writer)
+        scheduler.step(miou)
 
+        #visualize_val_predictions(model, val_loader, device, epoch, processor=processor, writer=writer)
         if miou > best_miou:
             best_miou = miou
             best_model_wts = copy.deepcopy(model.state_dict())
+            epochs_without_improvement = 0
+            logger.info((f"mIoU improved to {best_miou:.4f}, saving model weights."))
             """if (epoch + 1) % 10 == 0 or epoch == 1:
                 val_image = test_dataset[0][0].unsqueeze(0).to(device)
                 _, features = model(val_image, return_features=True)
                 for name in ["bottleneck", "enc1", "enc2", "dec3", "dec4"]:
                     visualisation.visualise_feature_map(features[name], f"{name} (Epoch {epoch + 1})")"""
+        else:
+            epochs_without_improvement += 1
+            logger.info(f"No improvement in mIoU for {epochs_without_improvement} epochs.")
+
+        if epochs_without_improvement >= PATIENCE:
+            logger.info(f"Early stopping triggered after {PATIENCE} epochs without improvement.")
+            break
+
     model.load_state_dict(best_model_wts)
+    return model
 
 def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, device, writer=None):
-    print(f"\nTraining model: {model_name}")
+    logger.info(f"\nTraining model: {model_name}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
@@ -167,27 +170,26 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     criterion, scheduler, optimizer = get_loss_and_optimizer(model)
 
-    print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+    logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
 
-    train(
+    model = train(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
         criterion=criterion,
         optimizer=optimizer,
+        scheduler=scheduler,
         device=device,
         num_epochs=NUM_EPOCHS,
         writer=writer
     )
-    # Save model after training
-    # Base checkpoint directory (relative to this script)
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_dlr_newUNETREST.pth"
+    custom_name = f"{model_name}_model_dlr_resnet101.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
-    print(f"✅ Model saved to {model_save_path}")
+    logger.info(f"✅ Model saved to {model_save_path}")
 
     evaluate(model, test_loader, device, writer=writer)
     visualisation.visualize_prediction(model, test_loader, device)
@@ -241,9 +243,9 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
     per_class_ious = iou_per_class.compute()
     acc = accuracy.compute()
 
-    print(f"\n✓ Mean IoU: {miou:.4f}")
+    logger.info(f"\n✓ Mean IoU: {miou:.4f}")
     for i, class_iou in enumerate(per_class_ious):
-        print(f"  └─ Class {i:02d} IoU: {class_iou:.4f}")
+        logger.info(f"  └─ Class {i:02d} IoU: {class_iou:.4f}")
 
     # Write to TensorBoard if available
     if writer and epoch is not None:
@@ -298,7 +300,7 @@ def main():
     """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
     args = parser.parse_args()"""
-    dataset_name = "ResUnet50"
+    dataset_name = "dlr_deeplabv3+"
     """dataset_choice = args.dataset or dataset_name"""
 
     torch.manual_seed(RANDOM_SEED)
@@ -313,27 +315,27 @@ def main():
     else:  # fallback to DLR dataset
          train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
 
-    """# Add this after loading datasets
-    print("Checking FLAIR label range...")
+    """
+    logger.info("Checking FLAIR label range...")
     all_labels = torch.cat([train_dataset[i][1].flatten() for i in range(20)])  # Sample 20 masks
-    print("Unique labels in train set:", torch.unique(all_labels))
-    print("N_CLASSES =", N_CLASSES)"""
+    logger.info("Unique labels in train set:", torch.unique(all_labels))
+    logger.info("N_CLASSES =", N_CLASSES)"""
 
-    print(f"Dataset chosen is : {dataset_name}")
-    print(f"\nTrain samples: {len(train_dataset)}")
-    print(f"Val samples: {len(val_dataset)}")
+    logger.info(f"Dataset chosen is : {dataset_name}")
+    logger.info(f"\nTrain samples: {len(train_dataset)}")
+    logger.info(f"Val samples: {len(val_dataset)}")
 
     """sample_image, sample_mask = train_dataset[0]
-    print("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
-    print("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
+    logger.info("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
+    logger.info("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
 
-    log_dir = f"runs/{dataset_name}_experiment_FLAIR{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_dlr{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        train_and_evaluate("unet_resnet50", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("deeplabv3+", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
-        print("Training interrupted manually.")
+        logger.info("Training interrupted manually.")
     finally:
         writer.close()
 
