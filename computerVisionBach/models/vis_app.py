@@ -2,7 +2,10 @@ import sys
 import os
 import tempfile
 import atexit
+from random import random
 
+from patchify import patchify, unpatchify
+import torch.nn.functional as F
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 from transformers.modeling_utils import PreTrainedModel
 from transformers import SegformerImageProcessor
@@ -15,8 +18,8 @@ import rasterio
 import cv2
 from computerVisionBach.models.Unet_SS import utils
 from computerVisionBach.models.model_pipeline import smp, N_CLASSES
-
 PATCH_SIZE = 512
+OVERLAP = 64
 # ----------------------------------------
 # ⚙️ Config
 # ----------------------------------------
@@ -116,22 +119,16 @@ def load_model(model_name="deeplabv3+"):
 
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
-def predict_image_with_patches(image_np, model):
-    from patchify import patchify, unpatchify
-    import torch.nn.functional as F
-
+def predict_image_with_patches(image_np, model, crop_size):
     h, w, _ = image_np.shape
-    pad_h = (PATCH_SIZE - h % PATCH_SIZE) % PATCH_SIZE
-    pad_w = (PATCH_SIZE - w % PATCH_SIZE) % PATCH_SIZE
+    pad_h = (crop_size - h % crop_size) % crop_size
+    pad_w = (crop_size - w % crop_size) % crop_size
 
     # Pad image on bottom and right
-    image_padded = np.pad(
-        image_np,
-        ((0, pad_h), (0, pad_w), (0, 0)),
-        mode="reflect"
-    )
+    image_padded = np.pad(image_np,((0, pad_h), (0, pad_w), (0, 0)), mode="reflect")
 
-    patches = patchify(image_padded, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
+    patches = patchify(image_padded, (crop_size, crop_size, 3), step=crop_size)
+    print(patches.shape)
     mask_patches = []
 
     with torch.no_grad():
@@ -160,13 +157,37 @@ def predict_image_with_patches(image_np, model):
     # Crop back to original size
     return full_mask[:h, :w]
 
+def predict_random_crop(image_np, model, device, crop_size):
+    h, w, _ = image_np.shape
 
+    # Choose random top-left corner
+    max_y = h - crop_size
+    max_x = w - crop_size
+    top = np.random.randint(0, max_y)
+    left = np.random.randint(0, max_x)
 
+    # Crop image
+    crop = image_np[top:top+crop_size, left:left+crop_size]
 
+    with torch.no_grad():
+        if isinstance(model, PreTrainedModel):
+            inputs = processor(images=crop, return_tensors="pt", do_rescale=False).to(device)
+            output = model(**inputs).logits
+        else:
+            tensor = torch.tensor(crop.transpose(2, 0, 1) / 255.0, dtype=torch.float32).unsqueeze(0).to(device)
+            output = model(tensor)
+
+        if output.shape[-2:] != (crop_size, crop_size):
+            output = F.interpolate(output, size=(crop_size, crop_size), mode="bilinear", align_corners=False)
+
+        pred = torch.argmax(output, dim=1).cpu().numpy()[0]
+
+    return crop, pred  # both shape (512, 512)
 # ----------------------------------------
 # Main Streamlit Interface
 # ----------------------------------------
 st.sidebar.title("BEV Segmentation AI")
+crop_size = st.sidebar.slider(" Crop Size", min_value=128, max_value=1024, step=64, value=512)
 model_choice = st.sidebar.selectbox("Choose model", ["deeplabv3+", "unet", "segformer", "upernet", "mask2former", "unet_resnet34_flair"])
 model = load_model(model_choice)
 st.markdown("""
@@ -223,28 +244,33 @@ else:
 # Show original
 st.subheader("🖼️ Original Image")
 st.image(image, use_column_width=True)
-
+crop_method = st.radio(
+    "Select Inference Method:",
+    ["Full Image (patch-wise)", "Random Crop"],
+    index=1,
+)
+use_random_crop = crop_method == "Random Crop"
 # ----------------------------------------
 # Inference
 # ----------------------------------------
-if st.button("🧠 Run Segmentation"):
+if st.button("Run Segmentation"):
     with st.spinner("Segmenting..."):
-        pred_mask = predict_image_with_patches(image_np, model)
-        pred_rgb = utils.class_to_rgb(pred_mask, color_map_rgb)
-        # If input image has more than 3 channels, extract RGB only
-        if image_np.shape[2] > 3:
-            image_rgb = image_np[:, :, :3]
+        if use_random_crop:
+            crop_img, pred_mask = predict_random_crop(image_np, model, device, crop_size)
+            image_rgb = crop_img[:, :, :3] if crop_img.shape[2] > 3 else crop_img
         else:
-            image_rgb = image_np
+            pred_mask = predict_image_with_patches(image_np, model, crop_size)
+            image_rgb = image_np[:, :, :3] if image_np.shape[2] > 3 else image_np
 
-        # Resize prediction if needed
+        pred_rgb = utils.class_to_rgb(pred_mask, color_map_rgb)
+
+        # Match shape if necessary
         if pred_rgb.shape != image_rgb.shape:
             pred_rgb = cv2.resize(pred_rgb, (image_rgb.shape[1], image_rgb.shape[0]))
 
-        # Now blend
         overlay = cv2.addWeighted(image_rgb, 0.6, pred_rgb, 0.4, 0)
 
-    st.subheader("🧩 Segmentation Results")
+    st.subheader("Segmentation Results")
     col1, col2 = st.columns(2)
     col1.image(pred_rgb, caption="Predicted Mask", use_column_width=True)
     col2.image(overlay, caption="Overlay", use_column_width=True)
@@ -252,6 +278,7 @@ if st.button("🧠 Run Segmentation"):
     buffer = BytesIO()
     Image.fromarray(overlay).save(buffer, format="PNG")
     st.download_button("💾 Download Overlay", buffer.getvalue(), file_name="segmentation_overlay.png", mime="image/png")
+
 
 # ----------------------------------------
 # Optional: Styling
