@@ -16,6 +16,8 @@ import torch
 from io import BytesIO
 import rasterio
 import cv2
+from torchvision import transforms
+
 from computerVisionBach.models.Unet_SS import utils
 from computerVisionBach.models.model_pipeline import smp, N_CLASSES
 PATCH_SIZE = 512
@@ -26,6 +28,7 @@ OVERLAP = 64
 st.set_page_config(page_title="🛰️ Semantic Segmentation", layout="wide")
 color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 
 
 # ----------------------------------------
@@ -48,7 +51,8 @@ def load_model(model_name="deeplabv3+"):
             in_channels=3,
             classes=N_CLASSES
         )
-        ckpt = "computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model.pth"
+        #ckpt = "computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model.pth"
+        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet101.pth"
     elif model_name == "segformer":
         from transformers import SegformerForSemanticSegmentation
         model = SegformerForSemanticSegmentation.from_pretrained(
@@ -141,7 +145,8 @@ def predict_image_with_patches(image_np, model, crop_size):
                     input_processed = processor(images=patch, return_tensors="pt", do_rescale=False).to(device)
                     output = model(**input_processed).logits
                 else:
-                    tensor = torch.tensor(patch.transpose(2, 0, 1) / 255.0, dtype=torch.float32).unsqueeze(0).to(device)
+                    tensor = torch.tensor(patch.transpose(2, 0, 1) / 255.0, dtype=torch.float32)
+                    tensor = normalize(tensor).unsqueeze(0).to(device)
                     output = model(tensor)
 
                 if output.shape[-2:] != patch.shape[:2]:
@@ -174,7 +179,8 @@ def predict_random_crop(image_np, model, device, crop_size):
             inputs = processor(images=crop, return_tensors="pt", do_rescale=False).to(device)
             output = model(**inputs).logits
         else:
-            tensor = torch.tensor(crop.transpose(2, 0, 1) / 255.0, dtype=torch.float32).unsqueeze(0).to(device)
+            tensor = torch.tensor(crop.transpose(2, 0, 1) / 255.0, dtype=torch.float32)
+            tensor = normalize(tensor).unsqueeze(0).to(device)
             output = model(tensor)
 
         if output.shape[-2:] != (crop_size, crop_size):
@@ -262,6 +268,7 @@ if st.button("Run Segmentation"):
             pred_mask = predict_image_with_patches(image_np, model, crop_size)
             image_rgb = image_np[:, :, :3] if image_np.shape[2] > 3 else image_np
 
+        print(f"Unique masks predicted are: {np.unique(pred_mask)}")
         pred_rgb = utils.class_to_rgb(pred_mask, color_map_rgb)
 
         # Match shape if necessary
