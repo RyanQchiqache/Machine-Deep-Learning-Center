@@ -49,7 +49,7 @@ def get_loss_and_optimizer(model):
     ce_loss = nn.CrossEntropyLoss(ignore_index=255)
     #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,mode="max", patience=5, factor=0.5, verbose=True)
 
     return ce_loss, scheduler, optimizer
 
@@ -139,7 +139,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     elif model_name.lower() == "deeplabv3+":
         model = smp.DeepLabV3Plus(
-            encoder_name="resnet101",  # or "timm-efficientnet-b4" (requires `timm`)
+            encoder_name="resnet50",  # or "timm-efficientnet-b4" (requires `timm`)
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,

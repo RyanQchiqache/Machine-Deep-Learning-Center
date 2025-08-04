@@ -75,7 +75,7 @@ class SatelliteDataset(Dataset):
             if mask is not None:
                 transformed = self.transform(image=image, mask=mask)
                 image = transformed["image"]
-                mask = transformed["mask"]
+                mask = transformed["mask"].long()
             else:
                 transformed = self.transform(image=image)
                 image = transformed["image"]

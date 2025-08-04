@@ -37,9 +37,7 @@ def load_model(model_name="deeplabv3+"):
             in_channels=3,
             classes=N_CLASSES,
         )
-        #ckpt = "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth"
-        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_norUNET.pth"
-
+        ckpt = "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth"
     elif model_name == "deeplabv3+":
         model = smp.DeepLabV3Plus(
             encoder_name="resnet50",
