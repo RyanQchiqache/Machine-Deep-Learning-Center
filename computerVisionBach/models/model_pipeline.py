@@ -19,6 +19,7 @@ from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSeg
 from transformers.modeling_utils import PreTrainedModel
 from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import prepare_datasets_from_csvs
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
+from computerVisionBach.models.Unet_SS.SS_models.Mask2former import Mask2FormerModel
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
 
@@ -30,10 +31,10 @@ OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
 BATCH_SIZE = 16
-NUM_EPOCHS = 35
+NUM_EPOCHS = 50
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
-PATIENCE = 7
+PATIENCE = 10
 MODELS = {}
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
@@ -42,6 +43,28 @@ TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
 VAL_CSV_PATH = ""
 BASE_DIR = "/home/ryqc/data/flair_dataset"
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
+class_names = [
+    "Low vegetation",           # class 1
+    "Paved road",               # class 2
+    "Non paved road",           # class 3
+    "Paved parking place",      # class 4
+    "Non paved parking place",  # class 5
+    "Bikeways",                 # class 6
+    "Sidewalks",                # class 7
+    "Entrance exit",            # class 8
+    "Danger area",              # class 9
+    "Lane-markings",            # class 10
+    "Building",                 # class 11
+    "Car",                      # class 12
+    "Trailer",                  # class 13
+    "Van",                      # class 14
+    "Truck",                    # class 15
+    "Long truck",               # class 16
+    "Bus",                      # class 17
+    "Clutter",                  # class 18
+    "Impervious surface",       # class 19
+    "Tree",                     # class 20
+]
 
 
 def get_loss_and_optimizer(model):
@@ -61,13 +84,13 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
 
-        if isinstance(model, PreTrainedModel):
+        """if isinstance(model, PreTrainedModel):
             # Convert to numpy and preprocess
             images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
             inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
             outputs = model(**inputs).logits
-        else:
-            outputs = model(images)
+        else:"""
+        outputs = model(images)
 
         if outputs.shape[-2:] != masks.shape[-2:]:
             outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
@@ -102,7 +125,7 @@ def train(model, train_loader,val_loader, criterion, optimizer, scheduler, devic
         with torch.no_grad():
             miou = evaluate(model, val_loader, device ,epoch=epoch, writer=writer)
 
-        scheduler.step(miou)
+        scheduler.step(miou.item())
 
         #visualize_val_predictions(model, val_loader, device, epoch, processor=processor, writer=writer)
         if miou > best_miou:
@@ -132,9 +155,19 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
+    # Just after fetching a batch in your DataLoader loop:
+    images, masks = next(iter(train_loader))
+    print("Image range:", images.min().item(), images.max().item())  # Should be around 0–1
+    print("Mask unique:", masks.unique())
 
+    if model_name.lower() == "mask2former":
+        logger.info("Running Mask2Former with custom wrapper...")
+        model = Mask2FormerModel(model_name="facebook/mask2former-swin-small-ade-semantic",num_classes=20, class_names=class_names,accelerator=None)
+        model.train_model(train_loader, val_loader, epochs=NUM_EPOCHS, lr=LEARNING_RATE, tensorboard_writer=writer)
+        model.evaluate(test_loader)
+        return
 
-    if model_name.lower() == "unet":
+    elif model_name.lower() == "unet":
         model = UNet(3, N_CLASSES).to(device)
 
     elif model_name.lower() == "deeplabv3+":
@@ -154,7 +187,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     elif model_name.lower() == "upernet":
         model = UperNetForSemanticSegmentation.from_pretrained(
-            "openmmlab/upernet-convnext-small",
+            "openmmlab/upernet-swin-small",#"openmmlab/upernet-convnext-small"
             num_labels=N_CLASSES,
             ignore_mismatched_sizes=True,
         ).to(device)
@@ -185,7 +218,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     )
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_dlr_resnet101.pth"
+    custom_name = f"{model_name}_model_dlr_swin.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
@@ -208,13 +241,13 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
             masks = masks.to(device)
 
             # HuggingFace transformer models
-            if isinstance(model, PreTrainedModel):
+            """if isinstance(model, PreTrainedModel):
                 images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
                 inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
                 output = model(**inputs)
                 logits = output.logits
-            else:
-                logits = model(images)
+            else:"""
+            logits = model(images)
 
             # Resize logits if needed
             if logits.shape[-2:] != masks.shape[-2:]:
@@ -300,7 +333,7 @@ def main():
     """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
     args = parser.parse_args()"""
-    dataset_name = "dlr_deeplabv3+"
+    dataset_name = "DLR_upernet"
     """dataset_choice = args.dataset or dataset_name"""
 
     torch.manual_seed(RANDOM_SEED)
@@ -333,7 +366,7 @@ def main():
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        train_and_evaluate("deeplabv3+", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("upernet", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
         logger.info("Training interrupted manually.")
     finally:
