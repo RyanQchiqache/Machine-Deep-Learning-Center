@@ -28,6 +28,22 @@ val_tf = A.Compose([
     ToTensorV2()
 ])
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
+ADE_MEAN = np.array([123.675, 116.280, 103.530]) / 255
+ADE_STD = np.array([58.395, 57.120, 57.375]) / 255
+
+m2f_train_tf = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.Rotate(limit=25),
+    A.Normalize(mean=ADE_MEAN, std=ADE_STD),
+    ToTensorV2()
+])
+m2f_val_tf = A.Compose([
+    A.Normalize(mean=ADE_MEAN, std=ADE_STD),
+    ToTensorV2()
+])
+
 
 # =====================================
 # patchify and load data DLR skyscapes
@@ -96,7 +112,7 @@ def load_folder(image_dir, mask_dir=None, patchify_enabled:bool=True):
 
         return X
 
-def load_data_dlr(base_dir, dataset_type="SS_Dense"):
+def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
     base = os.path.join(base_dir, dataset_type)
 
     X_train, y_train = load_folder(
@@ -126,9 +142,15 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense"):
         relabeled[valid] = mask[valid] - 1  # remap 1–20 → 0–19
         return relabeled
 
-    train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
-    val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
-    test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
+    if model_name == "Mask2former":
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
+
+    else:
+        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
 
     num_classes = 20  # or whatever you set in the model
     """for i, (_, mask) in enumerate(train_dataset):
