@@ -6,12 +6,12 @@ from torch.optim import AdamW
 from tqdm import tqdm
 import torch.nn as nn
 from loguru import logger
-from torchmetrics.classification import MulticlassJaccardIndex
+from torchmetrics.classification import MulticlassJaccardIndex, MulticlassAccuracy
 
 from transformers.models.mask2former.modeling_mask2former import (
     Mask2FormerPixelDecoder,
 )
-device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device or ("cuda" if torch.cuda.is_available() else "cpu")
 class Mask2FormerModel:
     """Wrapper for Mask2Former model to handle initialization, training, evaluation, and inference."""
 
@@ -192,7 +192,7 @@ class Mask2FormerModel:
         return val_miou
 
     @torch.no_grad()
-    def evaluate(self, data_loader, device):
+    def evaluate(self, data_loader, device, epoch, writer=None):
         logger.info("Evaluating model...")
         self.model.eval()
         num_classes = self.model.config.num_labels if hasattr(self.model, "config") else 6
@@ -200,6 +200,7 @@ class Mask2FormerModel:
         # Instantiate metric
         iou_macro = MulticlassJaccardIndex(num_classes=num_classes, average="macro", ignore_index=255).to(device)
         iou_per_class = MulticlassJaccardIndex(num_classes=num_classes, average=None, ignore_index=255).to(device)
+        accuracy = MulticlassAccuracy(num_classes=num_classes, average='macro').to(device)
 
         for batch_idx, (images, masks) in tqdm(enumerate(data_loader), total=len(data_loader)):
             logger.info(f"Evaluating batch {batch_idx + 1}/{len(data_loader)}")
@@ -210,10 +211,15 @@ class Mask2FormerModel:
 
                 iou_macro.update(preds, masks)
                 iou_per_class.update(preds, masks)
+                accuracy.update(preds, masks)
+
             except Exception as e:
                 logger.warning(f"Error during evaluation: {e}")
                 torch.cuda.empty_cache()
 
+        miou = iou_macro.compute()
+        per_class_ious = iou_per_class.compute()
+        acc = accuracy.compute()
         # Compute mean IoU (returns a scalar, unless you set average=None)
         logger.info(f"\n✓ Mean IoU: {miou:.4f}")
         for i, class_iou in enumerate(per_class_ious):
