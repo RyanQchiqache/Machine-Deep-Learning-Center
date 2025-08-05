@@ -16,6 +16,7 @@ from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
 from torch.utils.tensorboard import SummaryWriter
 from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
+from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from transformers.modeling_utils import PreTrainedModel
 from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import prepare_datasets_from_csvs
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
@@ -26,6 +27,7 @@ processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetun
 # ================================
 # Configuration
 # ================================
+MODEL_NAME =""
 PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
@@ -67,6 +69,33 @@ class_names = [
 ]
 
 
+#=====================================
+# Mask2former initialisation
+#====================================
+def load_mask2former_model(model_name: str, num_classes: int, class_names=None):
+    processor = Mask2FormerImageProcessor.from_pretrained(
+        model_name,
+        reduce_labels=False,
+        do_rescale=False
+    )
+
+    if class_names is None:
+        class_names = [f"Class_{i}" for i in range(num_classes)]
+
+    id2label = {i: name for i, name in enumerate(class_names)}
+    label2id = {name: i for i, name in id2label.items()}
+
+    model = Mask2FormerForUniversalSegmentation.from_pretrained(
+        model_name,
+        num_labels=num_classes,
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True
+    )
+
+    return model, processor
+
+
 def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=255)
@@ -80,6 +109,7 @@ def get_loss_and_optimizer(model):
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
+    is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
 
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
@@ -90,21 +120,24 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
             inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
             outputs = model(**inputs).logits
         else:"""
-        outputs = model(images)
-
-        if outputs.shape[-2:] != masks.shape[-2:]:
-            outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
-
-        loss = criterion(outputs, masks)
-
         optimizer.zero_grad()
+
+        if is_mask2former:
+            outputs = model(pixel_values=images, masks=masks)
+            loss = outputs.loss
+        else:
+            outputs = model(images)
+            if outputs.shape[-2:] != masks.shape[-2:]:
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+
+            loss = criterion(outputs, masks)
+
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item()
 
     return running_loss / len(dataloader)
-
 
 # ================================
 # Training Loop
@@ -161,11 +194,13 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     print("Mask unique:", masks.unique())
 
     if model_name.lower() == "mask2former":
-        logger.info("Running Mask2Former with custom wrapper...")
-        model = Mask2FormerModel(model_name="facebook/mask2former-swin-small-ade-semantic",num_classes=20, class_names=class_names,accelerator=None)
-        model.train_model(train_loader, val_loader, epochs=NUM_EPOCHS, lr=LEARNING_RATE, tensorboard_writer=writer)
-        model.evaluate(test_loader)
-        return
+        logger.info("Running Mask2Former with direct Hugging Face model...")
+        model, processor = load_mask2former_model(
+            model_name="facebook/mask2former-swin-small-ade-semantic",
+            num_classes=N_CLASSES,
+            class_names=class_names
+        )
+        model = model.to(device)
 
     elif model_name.lower() == "unet":
         model = UNet(3, N_CLASSES).to(device)
@@ -346,7 +381,7 @@ def main():
             test_csv_path= TEST_CSV_PATH,
             base_dir=BASE_DIR)
     else:  # fallback to DLR dataset
-         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense")
+         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense", model_name="Mask2former")
 
     """
     logger.info("Checking FLAIR label range...")
