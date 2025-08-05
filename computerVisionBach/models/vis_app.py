@@ -52,7 +52,8 @@ def load_model(model_name="deeplabv3+"):
             classes=N_CLASSES
         )
         #ckpt = "computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model.pth"
-        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet101.pth"
+        #ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet101.pth"
+        ckpt="/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth"
     elif model_name == "segformer":
         from transformers import SegformerForSemanticSegmentation
         model = SegformerForSemanticSegmentation.from_pretrained(
@@ -292,11 +293,22 @@ if st.button("Run Segmentation"):
 # ----------------------------------------
 st.markdown("""
     <style>
-    html, body, [class*="css"]  {
+    /* ===== GLOBAL STYLES ===== */
+    html, body, [class*="css"] {
         font-family: 'Segoe UI', sans-serif;
-        background-color: #0F1117;
-        color: #FAFAFA;
+        background-color: #0e1117;
+        color: #E0E0E0;
+        font-size: 16px;
     }
+
+    h1, h2, h3 {
+        color: #E3E8F0;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ===== BUTTONS ===== */
+    
     .stButton>button {
         background-color: #14C4FF;
         color: white;
@@ -309,8 +321,77 @@ st.markdown("""
         background-color: #0072FF;
         transform: scale(1.05);
     }
-    .stFileUploader>div>div {
-        color: #FAFAFA;
+
+    /* ===== SIDEBAR ===== */
+    section[data-testid="stSidebar"] {
+        background-color: #1e2633;
+        border-right: 1px solid #39414f;
+        padding: 1rem;
+    }
+
+    /* ===== FILE UPLOADER ===== */
+    .stFileUploader > div > div {
+        background-color: #1a1f27;
+        border: 1px dashed #3A3F4B;
+        color: #E0E0E0;
+        padding: 0.6rem;
+        border-radius: 8px;
+    }
+
+    /* ===== RADIO BUTTONS ===== */
+    .stRadio > div > label {
+        background-color: #1f2630;
+        border: 1px solid #2a2f3b;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+        margin-bottom: 6px;
+        color: #dcdcdc;
+        transition: background-color 0.2s ease;
+    }
+
+    .stRadio > div > label:hover {
+        background-color: #2a2f3b;
+    }
+
+    /* ===== SELECTBOX / SLIDER ===== */
+    .stSelectbox div, .stSlider, .stSelectbox label {
+        color: #E0E0E0 !important;
+    }
+
+    /* ===== IMAGE CAPTIONS / TEXT ELEMENTS ===== */
+    .element-container p {
+        color: #aaaaaa;
+        font-size: 0.9rem;
+    }
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #1f2630;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #3A3F4B;
+        border-radius: 8px;
+    }
+
+    /* ===== FORM ELEMENTS ===== */
+    input, textarea, select {
+        background-color: #1f2630 !important;
+        color: #E0E0E0 !important;
+        border: 1px solid #3A3F4B !important;
+        border-radius: 6px;
+        padding: 0.4rem 0.6rem;
+    }
+
+    /* ===== HEADINGS CENTERING ===== */
+    .main > div > div > div > h1 {
+        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
+
+
