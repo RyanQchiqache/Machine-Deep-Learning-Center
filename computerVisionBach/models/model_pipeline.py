@@ -1,6 +1,8 @@
 import copy
 import os
 import sys
+from typing import List, Tuple
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 from torch.utils.data import DataLoader
@@ -15,6 +17,8 @@ import segmentation_models_pytorch as smp
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
 from torch.utils.tensorboard import SummaryWriter
+import transformers
+print("Transformers version:", transformers.__version__)
 from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from transformers.modeling_utils import PreTrainedModel
@@ -32,7 +36,7 @@ PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
 N_CLASSES = 20
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 NUM_EPOCHS = 50
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
@@ -92,6 +96,7 @@ def load_mask2former_model(model_name: str, num_classes: int, class_names=None):
         label2id=label2id,
         ignore_mismatched_sizes=True
     )
+    model.config.ignore_index = 255
 
     return model, processor
 
@@ -106,7 +111,7 @@ def get_loss_and_optimizer(model):
     return ce_loss, scheduler, optimizer
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device):
+def train_one_epoch(model,processor, dataloader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
     is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
@@ -123,8 +128,16 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         optimizer.zero_grad()
 
         if is_mask2former:
-            outputs = model(pixel_values=images, masks=masks)
+            batch_inputs = processor(images=images, segmentation_maps=masks, return_tensors="pt")
+            batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor) else [i.to(device) for i in v]) for k, v in
+                            batch_inputs.items()}
+            print(**batch_inputs)
+            outputs = model(**batch_inputs)
             loss = outputs.loss
+            loss = getattr(outputs, "loss", None)
+            if loss is None:
+                print("Warning: outputs.loss is None. Skipping this batch.")
+                continue
         else:
             outputs = model(images)
             if outputs.shape[-2:] != masks.shape[-2:]:
@@ -142,13 +155,13 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
+def train(model,processor, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
     best_miou = 0.0
     best_model_wts = copy.deepcopy(model.state_dict())
     epochs_without_improvement = 0
 
     for epoch in range(num_epochs):
-        loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        loss = train_one_epoch(model,processor,train_loader, criterion, optimizer, device)
         logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
 
         if writer:
@@ -200,6 +213,8 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
             num_classes=N_CLASSES,
             class_names=class_names
         )
+        print("Model class:", type(model))
+        print("Ignore index used in model:", model.config.ignore_index)
         model = model.to(device)
 
     elif model_name.lower() == "unet":
@@ -242,6 +257,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     model = train(
         model=model,
+        processor=processor,
         train_loader=train_loader,
         val_loader=val_loader,
         criterion=criterion,
@@ -253,7 +269,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     )
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_dlr_swin.pth"
+    custom_name = f"{model_name}_model_flair_swin_deeplabv3+.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
@@ -270,6 +286,7 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
     iou_macro = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
     iou_per_class = MulticlassJaccardIndex(num_classes=N_CLASSES, average=None).to(device)
     accuracy = MulticlassAccuracy(num_classes=N_CLASSES, average='macro').to(device)
+    is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
     with torch.no_grad():
         for images, masks in tqdm(dataloader, desc="Evaluating", leave=False):
             images = images.to(device)
@@ -282,7 +299,13 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
                 output = model(**inputs)
                 logits = output.logits
             else:"""
-            logits = model(images)
+            if is_mask2former:
+                batch_inputs = processor(images=images, return_tensors="pt")
+                batch_inputs = {k: v.to(device) for k, v in batch_inputs.items()}
+                logits = model(**batch_inputs)
+            else:
+                logits = model(images)
+
 
             # Resize logits if needed
             if logits.shape[-2:] != masks.shape[-2:]:
@@ -368,7 +391,7 @@ def main():
     """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
     args = parser.parse_args()"""
-    dataset_name = "DLR_upernet"
+    dataset_name = "flair"
     """dataset_choice = args.dataset or dataset_name"""
 
     torch.manual_seed(RANDOM_SEED)
@@ -397,11 +420,11 @@ def main():
     logger.info("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
     logger.info("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
 
-    log_dir = f"runs/{dataset_name}_experiment_dlr{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_flair_deeplabv3+{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        train_and_evaluate("upernet", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("deeplabv3+", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
         logger.info("Training interrupted manually.")
     finally:
