@@ -28,8 +28,8 @@ val_tf = A.Compose([
     ToTensorV2()
 ])
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
-ADE_MEAN = np.array([123.675, 116.280, 103.530]) / 255
-ADE_STD = np.array([58.395, 57.120, 57.375]) / 255
+ADE_MEAN = (np.array([123.675, 116.280, 103.530]) / 255).tolist()
+ADE_STD = (np.array([58.395, 57.120, 57.375]) / 255).tolist()
 
 m2f_train_tf = A.Compose([
     A.HorizontalFlip(p=0.5),
@@ -130,11 +130,11 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
 
     color_map_rgb = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
 
-    visualisation.visualize_sample(
+    """visualisation.visualize_sample(
         X_train,
         [utils.class_to_rgb(mask, color_map_rgb) for mask in y_train],
         y_train
-    )
+    )"""
     ## relabel 1–20 → 0–19, and 0 → 255 (ignored)
     def relabel_fn(mask):
         relabeled = np.full_like(mask, 255, dtype=np.int64)  # default to ignore index
@@ -150,7 +150,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
     else:
         train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
         val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True)
 
     num_classes = 20  # or whatever you set in the model
     """for i, (_, mask) in enumerate(train_dataset):
