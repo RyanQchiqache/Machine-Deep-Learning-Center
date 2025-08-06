@@ -8,7 +8,7 @@ import rasterio
 import cv2
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -17,6 +17,7 @@ class SatelliteDataset(Dataset):
         self.from_paths = isinstance(images[0], str)
         self.transform = transform
         self.relabel_fn = relabel_fn
+        self.is_test = is_test
 
     def __len__(self):
         return len(self.images)
@@ -67,6 +68,34 @@ class SatelliteDataset(Dataset):
             image = self.images[idx]
             mask = self.masks[idx].astype(np.int64) if self.masks is not None else None
 
+        # If test mode and no mask, just return the image
+        if self.is_test or mask is None:
+            if isinstance(image, np.ndarray):
+                image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
+            return image
+
+        if self.relabel_fn is not None:
+            assert isinstance(mask, np.ndarray), "Mask must be a NumPy array before relabeling"
+            mask = self.relabel_fn(mask)
+
+        if self.transform:
+            transformed = self.transform(image=image, mask=mask)
+            image = transformed["image"]
+            mask = transformed["mask"].long()
+        else:
+            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
+            mask = torch.from_numpy(mask).long()
+
+        return image, mask
+
+    """def __getitem__(self, idx):
+        if self.from_paths:
+            image = self._load_image(self.images[idx])
+            mask = self._load_mask(self.masks[idx]) if self.masks is not None else None
+        else:
+            image = self.images[idx]
+            mask = self.masks[idx].astype(np.int64) if self.masks is not None else None
+
         if mask is not None and self.relabel_fn is not None:
             assert isinstance(mask, np.ndarray), "Mask must be a NumPy array before relabeling"
             mask = self.relabel_fn(mask)
@@ -85,4 +114,4 @@ class SatelliteDataset(Dataset):
             if mask is not None:
                 mask = torch.from_numpy(mask).long()
 
-        return image, mask
+        return image, mask"""
