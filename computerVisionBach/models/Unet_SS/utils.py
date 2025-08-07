@@ -1,6 +1,11 @@
-from collections import Counter
-
 import numpy as np
+import torch
+import yaml
+import os
+from collections import Counter
+from torch.utils.data import DataLoader
+from computerVisionBach.models.Unet_SS import visualisation
+
 
 def rgb_to_class_label(mask, color_map):
     label = np.full(mask.shape[:2], fill_value=255, dtype=np.uint8)  # invalid default
@@ -9,9 +14,10 @@ def rgb_to_class_label(mask, color_map):
         label[match] = class_id
     if (label == 255).any():
         unique_unmapped = np.unique(mask[label == 255])
-        print(f"⚠️ Warning: Unmapped RGB values found: {unique_unmapped}")
+        print(f"Warning: Unmapped RGB values found: {unique_unmapped}")
         raise ValueError("Some pixels in mask have no class mapping.")
     return label
+
 
 def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
     """
@@ -25,7 +31,6 @@ def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
     return remapped
 
 
-
 def convert_masks_to_class_labels(masks):
     return np.array([rgb_to_class_label(mask) for mask in masks])
 
@@ -36,15 +41,18 @@ def class_to_rgb(mask, color_map):
         rgb_mask[mask == class_id] = color
     return rgb_mask
 
+
 def remap_mask(mask):
     result = np.zeros_like(mask, dtype=np.uint8)
     for i, class_id in enumerate(sorted(np.unique(mask))):
         result[mask == class_id] = i
     return result
 
+
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
-    return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+    return [int(hex_color[i:i + 2], 16) for i in (0, 2, 4)]
+
 
 def count_class_distribution(masks):
     total_counts = Counter()
@@ -67,6 +75,15 @@ def create_color_to_class(label_dict):
 
     color_to_class = {color: class_index for class_index, color in label_dict.items()}
     return color_to_class
+
+def load_config():
+    """
+    Yaml file loader for reusability in multiple files
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
 
 CLASS_COLOR_MAP = {
     0: np.array([60, 16, 152]),
@@ -113,7 +130,9 @@ COLOR_MAP_multi_lane = {
     10: ['No parking zone', '#009696'],
     11: ['Parking space', '#c8c800'],
     12: ['Other lane-markings', '#6400c8'],
-    }
+}
+
+
 # ================================
 # Reconstruction of images
 # ================================
@@ -153,40 +172,3 @@ def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions
                 )
                 count += 1
                 all_images, all_masks, all_preds = [], [], []
-
-"""# ================================
-# patchify and load data kaggel
-# ================================
-def extract_patches_from_directory(directory, kind='images'):
-    dataset = []
-    for path, subdirs, files in os.walk(directory):
-        if path.endswith(kind):
-            for file in sorted(os.listdir(path)):
-                if (kind == 'images' and file.endswith('.jpg')) or (kind == 'masks' and file.endswith('.png')):
-                    img_path = os.path.join(path, file)
-                    img = cv2.imread(img_path, 1)
-                    if kind == 'masks':
-                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    h, w = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE, (img.shape[1] // PATCH_SIZE) * PATCH_SIZE
-                    img = Image.fromarray(img).crop((0, 0, w, h))
-                    img = np.array(img)
-                    patches = patchify(img, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
-                    for i in range(patches.shape[0]):
-                        for j in range(patches.shape[1]):
-                            dataset.append(patches[i, j, 0])
-    return np.array(dataset)
-
-
-def load_data(root_dir, test_size, seed):
-    images = extract_patches_from_directory(root_dir, kind='images')
-    masks_rgb = extract_patches_from_directory(root_dir, kind='masks')
-    masks_label = utils.convert_masks_to_class_labels(masks_rgb)
-
-    visualisation.visualize_sample(images, masks_rgb, masks_label)
-
-    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, train_size=1 - test_size,
-                                                        random_state=seed)
-    train_dataset = SatelliteDataset(X_train, y_train)
-    test_dataset = SatelliteDataset(X_test, y_test)
-
-    return train_dataset, test_dataset"""
