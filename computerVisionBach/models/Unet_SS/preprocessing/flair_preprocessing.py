@@ -3,14 +3,11 @@ import sys
 import numpy as np
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from typing import Callable, Tuple, List, Optional
+from typing import Tuple, List, Optional
 import csv
 from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
-from transformers import SegformerImageProcessor
-from torchvision import transforms as T
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
 tf_train = A.Compose([
     A.HorizontalFlip(p=0.5),
