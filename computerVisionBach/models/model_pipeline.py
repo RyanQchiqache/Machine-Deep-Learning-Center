@@ -35,19 +35,19 @@ MODEL_NAME =""
 PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 20
-BATCH_SIZE = 8
+N_CLASSES = 19
+BATCH_SIZE = 16
 NUM_EPOCHS = 50
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
 PATIENCE = 10
-MODELS = {}
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
+# FLAIR paths
+BASE_DIR = "/home/ryqc/data/flair_dataset"
 TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
 TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
-VAL_CSV_PATH = ""
-BASE_DIR = "/home/ryqc/data/flair_dataset"
+VAL_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 class_names = [
     "Low vegetation",           # class 1
@@ -111,7 +111,7 @@ def get_loss_and_optimizer(model):
     return ce_loss, scheduler, optimizer
 
 
-def train_one_epoch(model,processor, dataloader, criterion, optimizer, device):
+def train_one_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
     is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
@@ -155,13 +155,13 @@ def train_one_epoch(model,processor, dataloader, criterion, optimizer, device):
 # ================================
 # Training Loop
 # ================================
-def train(model,processor, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
+def train(model, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
     best_miou = 0.0
     best_model_wts = copy.deepcopy(model.state_dict())
     epochs_without_improvement = 0
 
     for epoch in range(num_epochs):
-        loss = train_one_epoch(model,processor,train_loader, criterion, optimizer, device)
+        loss = train_one_epoch(model,train_loader, criterion, optimizer, device)
         logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
 
         if writer:
@@ -222,7 +222,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     elif model_name.lower() == "deeplabv3+":
         model = smp.DeepLabV3Plus(
-            encoder_name="resnet50",  # or "timm-efficientnet-b4" (requires `timm`)
+            encoder_name="resnet101",  # or "timm-efficientnet-b4" (requires `timm`)
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,
@@ -257,7 +257,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     model = train(
         model=model,
-        processor=processor,
+        #processor=processor,
         train_loader=train_loader,
         val_loader=val_loader,
         criterion=criterion,
@@ -269,7 +269,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     )
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_flair_swin_deeplabv3+.pth"
+    custom_name = f"{model_name}_model_flair_deeplabv3+.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
@@ -401,7 +401,6 @@ def main():
         train_dataset, val_dataset, test_dataset= prepare_datasets_from_csvs(
             train_csv_path=TRAIN_CSV_PATH,
             val_csv_path= VAL_CSV_PATH,
-            test_csv_path= TEST_CSV_PATH,
             base_dir=BASE_DIR)
     else:  # fallback to DLR dataset
          train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense", model_name="Mask2former")
