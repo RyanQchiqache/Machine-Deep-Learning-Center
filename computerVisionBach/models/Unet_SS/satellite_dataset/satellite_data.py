@@ -8,7 +8,7 @@ import rasterio
 import cv2
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -18,6 +18,7 @@ class SatelliteDataset(Dataset):
         self.transform = transform
         self.relabel_fn = relabel_fn
         self.is_test = is_test
+        self.allowed_labels = allowed_labels
 
     def __len__(self):
         return len(self.images)
@@ -30,37 +31,41 @@ class SatelliteDataset(Dataset):
         else:
             img = cv2.imread(path, cv2.IMREAD_COLOR)
 
-        img = img.astype(np.float32) / 255.0
+        img = img.astype(np.float32)
         return img
 
     def _load_mask(self, path: str) -> np.ndarray:
-        # Use rasterio only for GeoTIFFs
         if path.lower().endswith((".tif", ".tiff")):
             with rasterio.open(path) as src:
-                mask = src.read(1)
+                if src.count == 1:
+                    mask = src.read(1)
+                    if src.nodata is not None:
+                        mask = np.where(mask == src.nodata, 255, mask)
+                elif src.count >= 3:
+                    rgb = np.transpose(src.read([1, 2, 3]), (1, 2, 0))
+                    if self.rgb_to_class:
+                        mask = self.rgb_to_class(rgb)
+                    else:
+                        raise ValueError("RGB GeoTIFF mask requires rgb_to_class mapping.")
+                else:
+                    raise ValueError(f"Unsupported GeoTIFF mask with {src.count} bands")
         else:
             mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-
             if mask is None:
                 raise FileNotFoundError(f"Mask not found or unreadable: {path}")
 
-            # for normal case RGB
             if mask.ndim == 3 and mask.shape[-1] == 3:
                 if self.rgb_to_class:
                     mask = self.rgb_to_class(mask)
                 else:
-                    # Convert to grayscale if no mapping provided
                     mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-
-            elif mask.ndim == 2:
-                # Already grayscale
-                pass
-            else:
+            elif mask.ndim != 2:
                 raise ValueError(f"Unsupported mask format: {mask.shape} at {path}")
 
         return mask.astype(np.int64)
 
     def __getitem__(self, idx):
+        # 1) load
         if self.from_paths:
             image = self._load_image(self.images[idx])
             mask = self._load_mask(self.masks[idx]) if self.masks is not None else None
@@ -68,16 +73,31 @@ class SatelliteDataset(Dataset):
             image = self.images[idx]
             mask = self.masks[idx].astype(np.int64) if self.masks is not None else None
 
-        # If test mode and no mask, just return the image
+        # 2) early return for test mode
         if self.is_test or mask is None:
             if isinstance(image, np.ndarray):
                 image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
             return image
 
+        # 3) relabeling (e.g., keep only 1..13 -> 0..12, others -> 255)
         if self.relabel_fn is not None:
-            assert isinstance(mask, np.ndarray), "Mask must be a NumPy array before relabeling"
             mask = self.relabel_fn(mask)
 
+        # 4) inspecting labels after relabeling
+        """m = mask  # numpy at this point
+        vals = np.unique(m[m != 255])
+        print("Unique labels (no 255):", vals[:50])"""
+
+        # 5) enforce allowed labels (optional safety)
+        if self.allowed_labels is not None:
+            used = np.unique(mask[mask != 255])
+            unexpected = set(used.tolist()) - set(self.allowed_labels)
+            assert len(unexpected) == 0, (
+                f"Mask contains unexpected labels: {sorted(unexpected)}. "
+                f"Allowed: {self.allowed_labels} or 255"
+            )
+
+        # 6) transforming / tensorize
         if self.transform:
             transformed = self.transform(image=image, mask=mask)
             image = transformed["image"]
@@ -87,3 +107,4 @@ class SatelliteDataset(Dataset):
             mask = torch.from_numpy(mask).long()
 
         return image, mask
+
