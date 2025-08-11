@@ -3,6 +3,8 @@ import os
 import sys
 from typing import List, Tuple
 
+import numpy as np
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 from torch.utils.data import DataLoader
@@ -26,7 +28,7 @@ from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import 
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
 from computerVisionBach.models.Unet_SS.SS_models.Mask2former import Mask2FormerModel
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
-
+print(smp.encoders.get_encoder_names())
 
 # ================================
 # Configuration
@@ -35,12 +37,12 @@ MODEL_NAME =""
 PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 19
-BATCH_SIZE = 16
-NUM_EPOCHS = 50
+N_CLASSES = 13
+BATCH_SIZE = 14
+NUM_EPOCHS = 80
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
-PATIENCE = 10
+PATIENCE = 30
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
 # FLAIR paths
@@ -241,9 +243,9 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
             num_labels=N_CLASSES,
             ignore_mismatched_sizes=True,
         ).to(device)
-    elif model_name.lower() == "unet_resnet50":
+    elif model_name.lower() == "unet_resnet101":
         model = smp.Unet(
-            encoder_name="resnet50",
+            encoder_name="resnet101",
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,
@@ -269,7 +271,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     )
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_flair_deeplabv3+.pth"
+    custom_name = f"{model_name}_model_flair_unet_resnet34.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
@@ -419,11 +421,11 @@ def main():
     logger.info("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
     logger.info("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
 
-    log_dir = f"runs/{dataset_name}_experiment_flair_deeplabv3+{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_flair_unet_resnet101{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        train_and_evaluate("deeplabv3+", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("unet_resnet101", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
         logger.info("Training interrupted manually.")
     finally:
