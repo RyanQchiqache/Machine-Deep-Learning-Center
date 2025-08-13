@@ -1,6 +1,6 @@
 from __future__ import annotations
 import segmentation_models_pytorch as smp
-from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
