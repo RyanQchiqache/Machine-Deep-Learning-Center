@@ -7,30 +7,72 @@ import numpy as np
 from omegaconf import OmegaConf
 cfg = OmegaConf.load("config.yaml")
 
+import os, re
 from datetime import datetime
 
-def build_log_dir(cfg):
-    base_dir = cfg.paths.tensorboard.dir
-    exp_name = cfg.paths.tensorboard.experiment_prefix.format(
-        project=cfg.project.name,
-        dataset=cfg.project.dataset,
-        model=cfg.model.name
-    )
-    if cfg.paths.tensorboard.add_timestamp:
-        exp_name += "_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    return os.path.join(base_dir, exp_name)
+def _safe_slug(s: str) -> str:
+    """Make a string filesystem-safe and concise."""
+    if s is None:
+        return "none"
+    s = str(s).strip()
+    s = s.replace(" ", "_")
+    s = s.replace("/", "-")
+    s = re.sub(r"[^A-Za-z0-9._\-+]", "-", s)
+    return s or "none"
 
-def build_checkpoint_path(cfg, model_name, dataset_name, epoch=None, miou=None):
-    base_dir = cfg.paths.checkpoints.dir
-    os.makedirs(base_dir, exist_ok=True)
-    filename = cfg.paths.checkpoints.filename_pattern.format(
-        model=model_name,
-        dataset=dataset_name,
-        epoch=epoch if epoch is not None else "final",
-        miou=f"{miou:.4f}" if miou is not None else "NA",
-        timestamp=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+def compute_run_subdir(cfg, *, model_name=None, encoder_name=None, encoder_weights=None, dataset_name=None):
+    """
+    Build a stable subpath like: flair/unet_resnet101/enc-resnet34_w-imagenet
+    """
+    dataset = dataset_name or cfg.project.dataset
+    model   = model_name or cfg.model.name
+    enc     = encoder_name or getattr(cfg.model.smp, "encoder_name", None)
+    wts     = encoder_weights or getattr(cfg.model.smp, "encoder_weights", None)
+
+    dataset = _safe_slug(dataset)
+    model   = _safe_slug(model)
+    enc     = _safe_slug(enc)
+    wts     = _safe_slug(wts)
+
+    return os.path.join(dataset, model, f"enc-{enc}_w-{wts}")
+
+def build_log_dir(cfg, *, model_name=None, encoder_name=None, encoder_weights=None, dataset_name=None):
+    """
+    Final TB log dir:
+      <artifacts_root>/runs/<dataset>/<model>/enc-<enc>_w-<wts>/<timestamp>
+    """
+    base_runs = cfg.paths.tensorboard.dir  # already "${paths.artifacts_root}/runs"
+    subdir = compute_run_subdir(cfg, model_name=model_name, encoder_name=encoder_name,
+                                encoder_weights=encoder_weights, dataset_name=dataset_name)
+    log_root = os.path.join(base_runs, subdir)
+    if cfg.paths.tensorboard.add_timestamp:
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_root = os.path.join(log_root, stamp)
+    os.makedirs(log_root, exist_ok=True)
+    return log_root
+
+def build_checkpoint_path(cfg, *, model_name, encoder_name, encoder_weights, dataset_name, epoch=None, miou=None):
+    """
+    Final ckpt file:
+      <artifacts_root>/checkpoints/<dataset>/<model>/enc-<enc>_w-<wts>/<pattern>
+    where <pattern> defaults to "{model}_{dataset}_{timestamp}.pth" from YAML.
+    """
+    ckpt_dir_base = cfg.paths.checkpoints.dir  # already "${paths.artifacts_root}/checkpoints"
+    subdir = compute_run_subdir(cfg, model_name=model_name, encoder_name=encoder_name,
+                                encoder_weights=encoder_weights, dataset_name=dataset_name)
+    ckpt_dir = os.path.join(ckpt_dir_base, subdir)
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    pattern = cfg.paths.checkpoints.filename_pattern  # e.g. "{model}_{dataset}_{timestamp}.pth"
+    filename = pattern.format(
+        model=_safe_slug(model_name),
+        dataset=_safe_slug(dataset_name),
+        epoch=(epoch if epoch is not None else "final"),
+        miou=(f"{miou:.4f}" if isinstance(miou, (int, float)) else "NA"),
+        timestamp=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
     )
-    return os.path.join(base_dir, filename)
+    return os.path.join(ckpt_dir, filename)
+
 
 def rgb_to_class_label(mask, color_map):
     label = np.full(mask.shape[:2], fill_value=255, dtype=np.uint8)  # invalid default
@@ -39,7 +81,7 @@ def rgb_to_class_label(mask, color_map):
         label[match] = class_id
     if (label == 255).any():
         unique_unmapped = np.unique(mask[label == 255])
-        print(f"⚠️ Warning: Unmapped RGB values found: {unique_unmapped}")
+        print(f"Warning: Unmapped RGB values found: {unique_unmapped}")
         raise ValueError("Some pixels in mask have no class mapping.")
     return label
 

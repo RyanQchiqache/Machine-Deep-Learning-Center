@@ -5,7 +5,7 @@ project:
   version: 1.0
 
 model:
-  name: ""             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
+  name: "unet_resnet101"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
   num_classes: 13
   ignore_class_index: 255
   patch_size: 512
