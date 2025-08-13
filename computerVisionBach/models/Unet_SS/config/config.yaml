@@ -11,6 +11,20 @@ model:
   patch_size: 512
   overlap: 0.5
   patchify_enabled: true
+  smp:
+    encoder_name: "resnet34"
+    encoder_weights: "imagenet"
+    in_channels: 3
+    encoder_output_stride: 16
+
+  hf:
+    checkpoint:
+      segformer:   "nvidia/segformer-b2-finetuned-ade-512-512"
+      mask2former: "facebook/mask2former-swin-small-ade-semantic"
+      upernet:     "openmmlab/upernet-swin-small"
+    processor:
+      reduce_labels: false
+      do_rescale: false
 
 training:
   batch_size: 14
