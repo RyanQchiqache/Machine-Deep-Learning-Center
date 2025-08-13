@@ -65,14 +65,13 @@ MODELS = [
     "segformer",    # HF Segformer B2
     "upernet",      # HF UPerNet ConvNeXt small
     "unet_resnet",
-    "Unet"
 ]
 
 # Model checkpoints (adjust paths for your machine)
 MODEL_CHECKPOINTS: Dict[str, str] = {
     "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
-    "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth",
-    "upernet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_newUNETREST.pth",
+    "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth"
+    "upernet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth",
     "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
     "segformer": "",  # leave empty to use HF weights
 }
@@ -85,6 +84,72 @@ NORMALIZE = transforms.Normalize(mean=[0.485, 0.456, 0.406],
 COLOR_MAP_RGB_DLR = {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
 
 COLOR_MAP_RGB_FLAIR = {k: v for k, v in FlairDataset.COLOR_MAP.items()}
+
+
+# =========================
+# Legend helper
+# ============================
+# --- Legend helpers ---
+
+def rgb_to_hex(rgb):
+    r, g, b = rgb
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+# DLR: build (name, hex) from your utils.COLOR_MAP_dense {idx: [name, hex]}
+DLR_LEGEND = {i: (v[0], v[1]) for i, v in utils.COLOR_MAP_dense.items()}
+
+# FLAIR: names in 0..18 order (match your COLOR_MAP keys)
+FLAIR_NAMES_19 = [
+    "building", "pervious surface", "impervious surface", "bare soil", "water",
+    "coniferous", "deciduous", "brushwood", "vineyard", "herbaceous vegetation",
+    "agricultural land", "plowed land", "swimming pool", "snow", "clear cut",
+    "mixed", "ligneous", "greenhouse", "other"
+]
+
+# Make hex colors for FLAIR maps (you had RGB tuples)
+FLAIR_HEX_19 = {i: rgb_to_hex(rgb) for i, rgb in FlairDataset.COLOR_MAP.items()}
+# For your 13-class relabel (original 1..13 -> new 0..12), we drop original idx 0 ("building")
+FLAIR_HEX_13 = {i: FLAIR_HEX_19[i + 1] for i in range(13)}
+FLAIR_NAMES_13 = {i: FLAIR_NAMES_19[i + 1] for i in range(13)}
+
+def get_legend_items(dataset: str, num_classes: int):
+    """
+    Returns list of (name, hex) tuples for the current dataset/class-count.
+    """
+    if dataset == "DLR":
+        return [(name, hex_color) for name, hex_color in DLR_LEGEND.values()]
+
+    if dataset == "FLAIR" and num_classes == 19:
+        return [(FLAIR_NAMES_19[i], FLAIR_HEX_19[i]) for i in range(19)]
+
+    if dataset == "FLAIR" and num_classes == 13:
+        return [(FLAIR_NAMES_13[i], FLAIR_HEX_13[i]) for i in range(13)]
+
+    # fallback
+    return [(f"class {i}", f"#{(i*37)%255:02x}{(i*91)%255:02x}{(i*53)%255:02x}")
+            for i in range(num_classes)]
+
+
+def render_legend(dataset: str, num_classes: int, cols=4):
+    """
+    Nicely render legend as colored chips in a grid (no numbers shown).
+    """
+    items = get_legend_items(dataset, num_classes)
+    grid = st.columns(cols)
+    for idx, (name, hex_color) in enumerate(items):
+        with grid[idx % cols]:
+            st.markdown(
+                f"""
+                <div style="display:flex;align-items:center;margin:6px 0;">
+                  <div style="width:18px;height:18px;border-radius:4px;background:{hex_color};
+                              border:1px solid rgba(255,255,255,0.15);margin-right:8px;"></div>
+                  <div style="font-size:0.92rem;">{name}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
 
 
 # =============================
@@ -406,6 +471,9 @@ with st.sidebar:
         st.session_state.expects_5ch = expects_5ch
         st.session_state._loaded_key = key_tuple
 
+    st.subheader("Legend")
+    render_legend(dataset, int(st.session_state.get("num_classes", num_classes_ui)))
+
 # File uploader
 uploaded = st.file_uploader("📤 Upload an aerial/urban image (JPG/PNG/TIF/TIFF)", type=["jpg", "jpeg", "png", "tif", "tiff"])
 if not uploaded:
@@ -435,6 +503,11 @@ if st.button("Run Segmentation"):
             pred_rgb = cv2.resize(pred_rgb, (base_rgb.shape[1], base_rgb.shape[0]))
 
         overlay = cv2.addWeighted(safe_to_uint8(base_rgb), 0.6, safe_to_uint8(pred_rgb), 0.4, 0)
+
+    if st.session_state.get("show_legend", False):
+        st.subheader("Legend")
+        legend_items = get_legend_items(dataset, int(st.session_state.num_classes))
+        render_legend(legend_items, cols=4)  # change cols to 3/5 if you prefer
 
     st.subheader("Segmentation Results")
     c1, c2 = st.columns(2)
