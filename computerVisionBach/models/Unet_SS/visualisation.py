@@ -1,12 +1,46 @@
+import os
 import torch
 import numpy as np
 from computerVisionBach.models.Unet_SS import utils
 from computerVisionBach.models.Unet_SS.utils import COLOR_MAP_dense, COLOR_MAP_multi_lane
 from matplotlib import pyplot as plt
 from patchify import unpatchify
-import os
+from transformers.modeling_utils import PreTrainedModel
+from omegaconf import OmegaConf
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 
 
+def visualize_val_predictions(model, val_loader, device, epoch, processor=None, writer=None, num_samples=3):
+    model.eval()
+    with torch.no_grad():
+        for images, masks in val_loader:
+            images = images.to(device)
+
+            # Handle HuggingFace models
+            if isinstance(model, PreTrainedModel):
+                images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
+                inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
+                outputs = model(**inputs).logits
+            else:
+                outputs = model(images)
+
+            if outputs.shape[-2:] != masks.shape[-2:]:
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+
+            preds = torch.argmax(outputs, dim=1).cpu()
+
+            # Visualize only the first batch and limited number of samples
+            samples = [(images[j].cpu(), masks[j].cpu(), preds[j]) for j in range(min(num_samples, len(images)))]
+            visualize_prediction(model, samples, epoch=epoch)
+
+            # Optional: add to TensorBoard
+            if writer:
+                writer.add_images("Samples/Input", images[:num_samples], epoch)
+                writer.add_images("Samples/GT", masks[:num_samples].unsqueeze(1).float() / cfg.model.num_classes, epoch)
+                writer.add_images("Samples/Prediction", preds[:num_samples].unsqueeze(1).float() / cfg.model.num_classes, epoch)
+
+            break
 color_map = {k: utils.hex_to_rgb(v[1]) for k, v in COLOR_MAP_dense.items()}
 # ================================
 # Prediction Sample
