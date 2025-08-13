@@ -16,39 +16,48 @@ DEFAULTS = {
 }
 
 # ---- helpers for HF models so return signature is consistent
-def _build_mask2former(num_classes, device, class_names=None, **_):
-    name = "facebook/mask2former-swin-small-ade-semantic"
-    processor = Mask2FormerImageProcessor.from_pretrained(name, reduce_labels=False, do_rescale=False)
+from transformers import AutoImageProcessor
+
+def _build_mask2former(num_classes, device, class_names=None,
+                       hf_name=None, ignore_index=255,
+                       reduce_labels=False, do_rescale=False, **_):
+    name = hf_name or "facebook/mask2former-swin-small-ade-semantic"
+    processor = AutoImageProcessor.from_pretrained(
+        name, reduce_labels=reduce_labels, do_rescale=do_rescale
+    )
     if class_names is None:
         class_names = [f"Class_{i}" for i in range(num_classes)]
     id2label = {i: c for i, c in enumerate(class_names)}
-    label2id = {c: i for i, c in id2label.items()}
     model = Mask2FormerForUniversalSegmentation.from_pretrained(
-        name,
-        num_labels=num_classes,
-        id2label=id2label,
-        label2id=label2id,
+        name, num_labels=num_classes, id2label=id2label,
+        label2id={v: k for k, v in id2label.items()},
         ignore_mismatched_sizes=True,
     )
-    model.config.ignore_index = 255
+    model.config.ignore_index = ignore_index
     return model.to(device), processor
 
-def _build_segformer(num_classes, device, **_):
-    name = "nvidia/segformer-b2-finetuned-ade-512-512"
-    processor = SegformerImageProcessor.from_pretrained(name)
+def _build_segformer(num_classes, device,
+                     hf_name=None, reduce_labels=False, do_rescale=False, **_):
+    name = hf_name or "nvidia/segformer-b2-finetuned-ade-512-512"
+    processor = AutoImageProcessor.from_pretrained(
+        name, reduce_labels=reduce_labels, do_rescale=do_rescale
+    )
     model = SegformerForSemanticSegmentation.from_pretrained(
         name, num_labels=num_classes, ignore_mismatched_sizes=True
     )
     return model.to(device), processor
 
-def _build_upernet(num_classes, device, **_):
-    name = "openmmlab/upernet-swin-small"
-    # upernet uses different processors depending on backbone; SegformerImageProcessor works for many cases
-    processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
+def _build_upernet(num_classes, device,
+                   hf_name=None, reduce_labels=False, do_rescale=False, **_):
+    name = hf_name or "openmmlab/upernet-swin-small"
+    processor = AutoImageProcessor.from_pretrained(
+        name, reduce_labels=reduce_labels, do_rescale=do_rescale
+    )
     model = UperNetForSemanticSegmentation.from_pretrained(
         name, num_labels=num_classes, ignore_mismatched_sizes=True
     )
     return model.to(device), processor
+
 
 # ---- SMP builders (return processor=None)
 def _build_unet(num_classes, device, encoder_name, encoder_weights, in_channels, **_):
@@ -91,7 +100,6 @@ def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_
     return m.to(device), None
 
 def _build_custom_unet(num_classes, device, in_channels, **_):
-    # your own UNet class
     m = UNet(in_channels, num_classes)
     return m.to(device), None
 
