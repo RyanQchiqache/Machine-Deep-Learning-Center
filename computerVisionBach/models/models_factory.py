@@ -1,12 +1,15 @@
 from __future__ import annotations
+import inspect
 import segmentation_models_pytorch as smp
 from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from functools import partial
-
+from omegaconf import OmegaConf
 import torch
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 
 # ---- optional: central defaults
 DEFAULTS = {
@@ -88,16 +91,21 @@ def _build_fpn(num_classes, device, encoder_name, encoder_weights, in_channels, 
     )
     return m.to(device), None
 
-def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_channels, encoder_output_stride=16, **_):
-    m = smp.DeepLabV3Plus(
+def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_channels,
+                         encoder_output_stride=None, **_):
+    args = dict(
         encoder_name=encoder_name,
         encoder_weights=encoder_weights,
         in_channels=in_channels,
         classes=num_classes,
         activation=None,
-        encoder_output_stride=encoder_output_stride,
     )
+    if encoder_output_stride is not None:
+        args["encoder_output_stride"] = encoder_output_stride
+
+    m = smp.DeepLabV3Plus(**args)
     return m.to(device), None
+
 
 def _build_custom_unet(num_classes, device, in_channels, **_):
     m = UNet(in_channels, num_classes)
@@ -142,16 +150,23 @@ def build_model(
         raise ValueError(f"Unknown model name: {model_name}. Available: {sorted(_MODEL_REGISTRY.keys())}")
 
     # fill defaults for SMP builders
-    kwargs = dict(
-        encoder_name=encoder_name or DEFAULTS["encoder_name"],
-        encoder_weights=encoder_weights or DEFAULTS["encoder_weights"],
-        in_channels=in_channels or DEFAULTS["in_channels"],
-        hf_name=extra.get("hf_name"),
-        ignore_index=extra.get("ignore_index", 255),
-        reduce_labels=extra.get("reduce_labels", False),
-        do_rescale=extra.get("do_rescale", False),
-        **extra,
-    )
+    base = {
+        "encoder_name": encoder_name or DEFAULTS["encoder_name"],
+        "encoder_weights": encoder_weights or DEFAULTS["encoder_weights"],
+        "in_channels": in_channels or DEFAULTS["in_channels"],
+        "ignore_index": extra.get("ignore_index", 255),
+        "reduce_labels": extra.get("reduce_labels", False),
+        "do_rescale": extra.get("do_rescale", False),
+    }
+
+    def _filtered_kwargs(fn, kwargs):
+        sig = inspect.signature(fn)
+        if any(p.kind is p.VAR_KEYWORD for p in sig.parameters.values()):
+            return kwargs  # builder accepts **kwargs → safe
+        return {k: v for k, v in kwargs.items() if k in sig.parameters}
+    base.update(extra)  # extras override defaults cleanly
+    kwargs = base
 
     builder = _MODEL_REGISTRY[key]
+    kwargs = _filtered_kwargs(builder, kwargs)
     return builder(num_classes=num_classes, device=device, **kwargs)
