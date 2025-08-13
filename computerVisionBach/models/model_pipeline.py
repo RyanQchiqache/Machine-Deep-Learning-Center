@@ -1,7 +1,8 @@
 import copy
 import os
 import sys
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
@@ -13,6 +14,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+
+torch.backends.cudnn.enabled = False
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+
 
 import segmentation_models_pytorch as smp
 from segmentation_models_pytorch.losses import DiceLoss
@@ -171,7 +177,6 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
         encoder_name=cfg.model.smp.encoder_name,
         encoder_weights=cfg.model.smp.encoder_weights,
         in_channels=cfg.model.smp.in_channels,
-        encoder_output_stride=cfg.model.smp.encoder_output_stride,
 
         # HF knobs (factory must accept & forward these)
         hf_name=hf_ckpt,
@@ -253,6 +258,9 @@ def main():
 
     torch.manual_seed(cfg.training.random_seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("CUDA avail:", torch.cuda.is_available())
+    if torch.cuda.is_available():
+        print("torch:", torch.__version__, "CUDA build:", torch.version.cuda, "cuDNN:", torch.backends.cudnn.version())
 
     if dataset_name == "flair":
         train_dataset, val_dataset, test_dataset= prepare_datasets_from_csvs(
@@ -260,7 +268,7 @@ def main():
             val_csv_path= cfg.data.flair.val_csv,
             base_dir=cfg.data.flair.base_dir)
     else:  # fallback to DLR dataset
-         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(cfg.data.dlr.root_dir, dataset_type="SS_Dense", model_name="Mask2former")
+         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(cfg.data.dlr.root_dir, dataset_type="SS_Dense", model_name="Deeplabv3+")
 
     if dataset_name.lower() == "flair":
         RARE_CLASS_IDS = cfg.data.flair.rare_class_ids
