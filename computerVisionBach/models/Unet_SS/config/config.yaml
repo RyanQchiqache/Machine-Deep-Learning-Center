@@ -15,7 +15,7 @@ model:
     encoder_name: "resnet34"
     encoder_weights: "imagenet"
     in_channels: 3
-    encoder_output_stride: ...
+    encoder_output_stride: 8
 
   hf:
     checkpoint:
@@ -27,7 +27,7 @@ model:
       do_rescale: false
 
 training:
-  batch_size: 16
+  batch_size: 12
   num_epochs: 10
   learning_rate: 0.001
   random_seed: 42
@@ -71,7 +71,7 @@ augmentation:
 
 paths:
   # All artifacts in one tidy tree; change these once, everything follows.
-  artifacts_root: "/home/ryqc/experiments/segmentation"   # master root for all outputs below
+  artifacts_root: "/home/ryqc/data/experiments/segmentation"   # master root for all outputs below
 
   # TensorBoard logs
   tensorboard:
