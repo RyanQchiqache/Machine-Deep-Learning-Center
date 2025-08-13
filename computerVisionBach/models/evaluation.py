@@ -4,8 +4,6 @@ from typing import Dict, Iterable, Optional, Sequence
 import torch
 import torch.nn.functional as F
 from torchmetrics.classification import MulticlassJaccardIndex, MulticlassAccuracy
-from computerVisionBach.models.model_pipeline import N_CLASSES, IGNORE_CLASS_INDEX
-IGNORE_INDEX = IGNORE_CLASS_INDEX
 
 def evaluate(
     model: torch.nn.Module,
