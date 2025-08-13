@@ -152,8 +152,8 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
         test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True)
 
-    num_classes = 20  # or whatever you set in the model
-    """for i, (_, mask) in enumerate(train_dataset):
+    """num_classes = 20  # or whatever you set in the model
+    for i, (_, mask) in enumerate(train_dataset):
         uniques = torch.unique(mask)
         print(f"Sample {i}: Unique labels:", uniques.tolist())
         valid = (uniques == 255) | ((uniques >= 0) & (uniques < num_classes))

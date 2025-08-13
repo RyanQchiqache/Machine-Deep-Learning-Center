@@ -1,11 +1,11 @@
+import sys
 from collections import Counter
-
+import os
 import torch
 from torch.utils.data import DataLoader
-
 import numpy as np
 from omegaconf import OmegaConf
-cfg = OmegaConf.load("config.yaml")
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 
 import os, re
 from datetime import datetime
@@ -212,7 +212,7 @@ class_names = [
 ]
 import csv, os
 
-def append_results_csv(csv_path, row_dict):
+"""def append_results_csv(csv_path, row_dict):
     # Creates header if file doesn’t exist yet
     new_file = not os.path.exists(csv_path)
     with open(csv_path, "a", newline="") as f:
@@ -229,7 +229,7 @@ row = {
     "seed": cfg.train.seed,                       # mIoU_macro, OA_micro, OA_macro, BoundaryF1, mIoU_rare, Params_M, PeakVRAM_GB, Latency_ms_per_img
 }
 append_results_csv("results_runs.csv", row)
-
+"""
 # ================================
 # Reconstruction of images
 # ================================
