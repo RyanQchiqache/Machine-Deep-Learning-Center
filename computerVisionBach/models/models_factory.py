@@ -1,5 +1,9 @@
 from __future__ import annotations
-
+import segmentation_models_pytorch as smp
+from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
+from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
+from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from functools import partial
 
 import torch
@@ -13,7 +17,6 @@ DEFAULTS = {
 
 # ---- helpers for HF models so return signature is consistent
 def _build_mask2former(num_classes, device, class_names=None, **_):
-    from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
     name = "facebook/mask2former-swin-small-ade-semantic"
     processor = Mask2FormerImageProcessor.from_pretrained(name, reduce_labels=False, do_rescale=False)
     if class_names is None:
@@ -31,7 +34,6 @@ def _build_mask2former(num_classes, device, class_names=None, **_):
     return model.to(device), processor
 
 def _build_segformer(num_classes, device, **_):
-    from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
     name = "nvidia/segformer-b2-finetuned-ade-512-512"
     processor = SegformerImageProcessor.from_pretrained(name)
     model = SegformerForSemanticSegmentation.from_pretrained(
@@ -40,7 +42,6 @@ def _build_segformer(num_classes, device, **_):
     return model.to(device), processor
 
 def _build_upernet(num_classes, device, **_):
-    from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
     name = "openmmlab/upernet-swin-small"
     # upernet uses different processors depending on backbone; SegformerImageProcessor works for many cases
     processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
@@ -51,7 +52,6 @@ def _build_upernet(num_classes, device, **_):
 
 # ---- SMP builders (return processor=None)
 def _build_unet(num_classes, device, encoder_name, encoder_weights, in_channels, **_):
-    import segmentation_models_pytorch as smp
     m = smp.Unet(
         encoder_name=encoder_name,
         encoder_weights=encoder_weights,
@@ -61,7 +61,6 @@ def _build_unet(num_classes, device, encoder_name, encoder_weights, in_channels,
     return m.to(device), None
 
 def _build_unetpp(num_classes, device, encoder_name, encoder_weights, in_channels, **_):
-    import segmentation_models_pytorch as smp
     m = smp.UnetPlusPlus(
         encoder_name=encoder_name,
         encoder_weights=encoder_weights,
@@ -72,7 +71,6 @@ def _build_unetpp(num_classes, device, encoder_name, encoder_weights, in_channel
     return m.to(device), None
 
 def _build_fpn(num_classes, device, encoder_name, encoder_weights, in_channels, **_):
-    import segmentation_models_pytorch as smp
     m = smp.FPN(
         encoder_name=encoder_name,
         encoder_weights=encoder_weights,
@@ -82,7 +80,6 @@ def _build_fpn(num_classes, device, encoder_name, encoder_weights, in_channels, 
     return m.to(device), None
 
 def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_channels, encoder_output_stride=16, **_):
-    import segmentation_models_pytorch as smp
     m = smp.DeepLabV3Plus(
         encoder_name=encoder_name,
         encoder_weights=encoder_weights,
@@ -95,7 +92,6 @@ def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_
 
 def _build_custom_unet(num_classes, device, in_channels, **_):
     # your own UNet class
-    from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
     m = UNet(in_channels, num_classes)
     return m.to(device), None
 
@@ -142,7 +138,12 @@ def build_model(
         encoder_name=encoder_name or DEFAULTS["encoder_name"],
         encoder_weights=encoder_weights or DEFAULTS["encoder_weights"],
         in_channels=in_channels or DEFAULTS["in_channels"],
+        hf_name=extra.get("hf_name"),
+        ignore_index=extra.get("ignore_index", 255),
+        reduce_labels=extra.get("reduce_labels", False),
+        do_rescale=extra.get("do_rescale", False),
         **extra,
     )
+
     builder = _MODEL_REGISTRY[key]
     return builder(num_classes=num_classes, device=device, **kwargs)
