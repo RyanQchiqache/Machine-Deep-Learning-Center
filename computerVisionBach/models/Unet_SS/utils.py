@@ -1,8 +1,36 @@
 from collections import Counter
 
+import torch
+from torch.utils.data import DataLoader
+
 import numpy as np
 from omegaconf import OmegaConf
 cfg = OmegaConf.load("config.yaml")
+
+from datetime import datetime
+
+def build_log_dir(cfg):
+    base_dir = cfg.paths.tensorboard.dir
+    exp_name = cfg.paths.tensorboard.experiment_prefix.format(
+        project=cfg.project.name,
+        dataset=cfg.project.dataset,
+        model=cfg.model.name
+    )
+    if cfg.paths.tensorboard.add_timestamp:
+        exp_name += "_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return os.path.join(base_dir, exp_name)
+
+def build_checkpoint_path(cfg, model_name, dataset_name, epoch=None, miou=None):
+    base_dir = cfg.paths.checkpoints.dir
+    os.makedirs(base_dir, exist_ok=True)
+    filename = cfg.paths.checkpoints.filename_pattern.format(
+        model=model_name,
+        dataset=dataset_name,
+        epoch=epoch if epoch is not None else "final",
+        miou=f"{miou:.4f}" if miou is not None else "NA",
+        timestamp=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    )
+    return os.path.join(base_dir, filename)
 
 def rgb_to_class_label(mask, color_map):
     label = np.full(mask.shape[:2], fill_value=255, dtype=np.uint8)  # invalid default
@@ -154,10 +182,9 @@ def append_results_csv(csv_path, row_dict):
 row = {
     "dataset": "FLAIR",
     "split": "test",
-    "model": model_name,                 # e.g. "Unet++"
-    "encoder": encoder_name,             # e.g. "resnet50"
-    "seed": seed,
-    **test_metrics                       # mIoU_macro, OA_micro, OA_macro, BoundaryF1, mIoU_rare, Params_M, PeakVRAM_GB, Latency_ms_per_img
+    "model": cfg.model.name,                 # e.g. "Unet++"
+    "encoder":cfg.model.smp.encoder_name ,             # e.g. "resnet50"
+    "seed": cfg.train.seed,                       # mIoU_macro, OA_micro, OA_macro, BoundaryF1, mIoU_rare, Params_M, PeakVRAM_GB, Latency_ms_per_img
 }
 append_results_csv("results_runs.csv", row)
 
@@ -191,13 +218,13 @@ def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions
             # Once 16 patches collected, reconstruct a full image
             if len(all_images) == patches_per_image:
                 save_path = f"reconstructed_outputs/reconstruction_{count}.png"
-                visualisation.reconstruct_and_visualize_patches(
+                """reconstruct_and_visualize_patches(
                     np.array(all_images), np.array(all_masks), np.array(all_preds),
                     patch_size=patch_size,
                     grid_shape=patch_shape,
                     color_map=color_map,
                     save_path=save_path
-                )
+                )"""
                 count += 1
                 all_images, all_masks, all_preds = [], [], []
 
@@ -237,77 +264,3 @@ def load_data(root_dir, test_size, seed):
     test_dataset = SatelliteDataset(X_test, y_test)
 
     return train_dataset, test_dataset"""
-
-
-# ================================
-# Evaluation
-# ================================
-def evaluate(model, dataloader, device, epoch=None, writer=None):
-    model.eval()
-    iou_macro = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
-    iou_per_class = MulticlassJaccardIndex(num_classes=N_CLASSES, average=None).to(device)
-    accuracy = MulticlassAccuracy(num_classes=N_CLASSES, average='macro').to(device)
-    is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
-    with torch.no_grad():
-        for images, masks in tqdm(dataloader, desc="Evaluating", leave=False):
-            images = images.to(device)
-            masks = masks.to(device)
-
-            # HuggingFace transformer models
-            """if isinstance(model, PreTrainedModel):
-                images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
-                inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
-                output = model(**inputs)
-                logits = output.logits
-            else:"""
-            if is_mask2former:
-                batch_inputs = processor(images=images, return_tensors="pt")
-                batch_inputs = {k: v.to(device) for k, v in batch_inputs.items()}
-                logits = model(**batch_inputs)
-            else:
-                logits = model(images)
-
-
-            # Resize logits if needed
-            if logits.shape[-2:] != masks.shape[-2:]:
-                logits = torch.nn.functional.interpolate(
-                    logits, size=masks.shape[-2:], mode="bilinear", align_corners=False
-                )
-
-            preds = torch.argmax(logits, dim=1)
-            preds = preds.view(-1)
-            masks = masks.view(-1)
-
-            valid = masks != 255
-            preds = preds[valid]
-            masks = masks[valid]
-
-            assert preds.min() >= 0 and preds.max() < N_CLASSES, f"Bad preds: {preds.unique()}"
-            assert masks.min() >= 0 and masks.max() < N_CLASSES, f"Bad masks: {masks.unique()}"
-
-            # Incremental metric updates (no memory explosion)
-            iou_macro.update(preds, masks)
-            iou_per_class.update(preds, masks)
-            accuracy.update(preds, masks)
-
-    # Compute final metrics
-    miou = iou_macro.compute()
-    per_class_ious = iou_per_class.compute()
-    acc = accuracy.compute()
-
-    logger.info(f"\n✓ Mean IoU: {miou:.4f}")
-    for i, class_iou in enumerate(per_class_ious):
-        logger.info(f"  └─ Class {i:02d} IoU: {class_iou:.4f}")
-
-    # Write to TensorBoard if available
-    if writer and epoch is not None:
-        writer.add_scalar("IoU/Mean", miou, epoch)
-        writer.add_scalar("Accuracy/Mean", acc, epoch)
-        for i, val in enumerate(per_class_ious):
-            writer.add_scalar(f"IoU/Class_{i}", val, epoch)
-
-    # Reset metrics after evaluation (optional if reused)
-    iou_macro.reset()
-    iou_per_class.reset()
-
-    return miou
