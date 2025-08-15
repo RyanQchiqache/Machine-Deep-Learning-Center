@@ -3,6 +3,8 @@ import os
 import sys
 from typing import List, Tuple
 
+import numpy as np
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 from torch.utils.data import DataLoader
@@ -18,7 +20,6 @@ from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from computerVisionBach.models.Unet_SS import visualisation
 from torch.utils.tensorboard import SummaryWriter
 import transformers
-
 print("Transformers version:", transformers.__version__)
 from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
@@ -26,51 +27,51 @@ from transformers.modeling_utils import PreTrainedModel
 from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import prepare_datasets_from_csvs
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
 from computerVisionBach.models.Unet_SS.SS_models.Mask2former import Mask2FormerModel
-
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
+print(smp.encoders.get_encoder_names())
 
 # ================================
 # Configuration
 # ================================
-MODEL_NAME = ""
+MODEL_NAME =""
 PATCH_SIZE = 512
 OVERLAP = 0.5
 ROOT_DIR = '/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset'
-N_CLASSES = 19
-BATCH_SIZE = 16
-NUM_EPOCHS = 50
+N_CLASSES = 13
+BATCH_SIZE = 14
+NUM_EPOCHS = 80
 LEARNING_RATE = 1e-3
 RANDOM_SEED = 42
-PATIENCE = 10
+PATIENCE = 30
 patchify_enabled = True
 NUM_RECONSTRUCTIONS = 4
 # FLAIR paths
 BASE_DIR = "/home/ryqc/data/flair_dataset"
-TRAIN_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
+TRAIN_CSV_PATH =  "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
 TEST_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
 VAL_CSV_PATH = "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
 FLAIR_USED_LABELS = [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
 class_names = [
-    "Low vegetation",  # class 1
-    "Paved road",  # class 2
-    "Non paved road",  # class 3
-    "Paved parking place",  # class 4
+    "Low vegetation",           # class 1
+    "Paved road",               # class 2
+    "Non paved road",           # class 3
+    "Paved parking place",      # class 4
     "Non paved parking place",  # class 5
-    "Bikeways",  # class 6
-    "Sidewalks",  # class 7
-    "Entrance exit",  # class 8
-    "Danger area",  # class 9
-    "Lane-markings",  # class 10
-    "Building",  # class 11
-    "Car",  # class 12
-    "Trailer",  # class 13
-    "Van",  # class 14
-    "Truck",  # class 15
-    "Long truck",  # class 16
-    "Bus",  # class 17
-    "Clutter",  # class 18
-    "Impervious surface",  # class 19
-    "Tree",  # class 20
+    "Bikeways",                 # class 6
+    "Sidewalks",                # class 7
+    "Entrance exit",            # class 8
+    "Danger area",              # class 9
+    "Lane-markings",            # class 10
+    "Building",                 # class 11
+    "Car",                      # class 12
+    "Trailer",                  # class 13
+    "Van",                      # class 14
+    "Truck",                    # class 15
+    "Long truck",               # class 16
+    "Bus",                      # class 17
+    "Clutter",                  # class 18
+    "Impervious surface",       # class 19
+    "Tree",                     # class 20
 ]
 
 
@@ -78,18 +79,6 @@ class_names = [
 # Mask2former initialisation
 #====================================
 def load_mask2former_model(model_name: str, num_classes: int, class_names=None):
-    """
-        Loads the Mask2Former model and processor from Hugging Face with the given class mappings.
-
-        Args:
-            model_name (str): The name of the pretrained model.
-            num_classes (int): Number of output segmentation classes.
-            class_names (list, optional): Custom class names for label mappings.
-
-        Returns:
-            model (nn.Module): The initialized Mask2Former model.
-            processor: Corresponding image processor for preprocessing inputs.
-    """
     processor = Mask2FormerImageProcessor.from_pretrained(
         model_name,
         reduce_labels=False,
@@ -115,40 +104,16 @@ def load_mask2former_model(model_name: str, num_classes: int, class_names=None):
 
 
 def get_loss_and_optimizer(model):
-    """
-        Creates the loss functions, optimizer, and learning rate scheduler for training.
-
-        Args:
-            model (nn.Module): The model to be trained.
-
-        Returns:
-            ce_loss (Loss): CrossEntropy loss function.
-            scheduler (Scheduler): Learning rate scheduler.
-            optimizer (Optimizer): Optimizer (Adam).
-        """
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=255)
     #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", patience=5, factor=0.5, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,mode="max", patience=5, factor=0.5, verbose=True)
 
     return ce_loss, scheduler, optimizer
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
-    """
-        Trains the model for one epoch over the given dataloader.
-
-        Args:
-            model (nn.Module): The model being trained.
-            dataloader (DataLoader): Dataloader for training data.
-            criterion (Loss): The loss function.
-            optimizer (Optimizer): The optimizer.
-            device (torch.device): The device to train on.
-
-        Returns:
-            float: Average loss over the epoch.
-        """
     model.train()
     running_loss = 0.0
     is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
@@ -178,8 +143,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         else:
             outputs = model(images)
             if outputs.shape[-2:] != masks.shape[-2:]:
-                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear",
-                                                          align_corners=False)
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
 
             loss = criterion(outputs, masks)
 
@@ -190,34 +154,16 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
 
     return running_loss / len(dataloader)
 
-
 # ================================
 # Training Loop
 # ================================
-def train(model, train_loader, val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
-    """
-        Main training loop that runs multiple epochs and applies early stopping.
-
-        Args:
-            model (nn.Module): Model to train.
-            train_loader (DataLoader): Dataloader for training set.
-            val_loader (DataLoader): Dataloader for validation set.
-            criterion (Loss): Loss function.
-            optimizer (Optimizer): Optimizer.
-            scheduler (Scheduler): Learning rate scheduler.
-            device (torch.device): CUDA or CPU.
-            num_epochs (int): Number of training epochs.
-            writer (SummaryWriter, optional): TensorBoard writer.
-
-        Returns:
-            nn.Module: Best model based on validation mIoU.
-        """
+def train(model, train_loader,val_loader, criterion, optimizer, scheduler, device, num_epochs, writer=None):
     best_miou = 0.0
     best_model_wts = copy.deepcopy(model.state_dict())
     epochs_without_improvement = 0
 
     for epoch in range(num_epochs):
-        loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        loss = train_one_epoch(model,train_loader, criterion, optimizer, device)
         logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
 
         if writer:
@@ -225,7 +171,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
 
         model.eval()
         with torch.no_grad():
-            miou = evaluate(model, val_loader, device, epoch=epoch, writer=writer)
+            miou = evaluate(model, val_loader, device ,epoch=epoch, writer=writer)
 
         scheduler.step(miou.item())
 
@@ -251,19 +197,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
     model.load_state_dict(best_model_wts)
     return model
 
-
 def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, device, writer=None):
-    """
-        Initializes model, prepares dataloaders, trains, saves and evaluates the model.
-
-        Args:
-            model_name (str): Name of the model architecture.
-            train_dataset (Dataset): Training dataset.
-            val_dataset (Dataset): Validation dataset.
-            test_dataset (Dataset): Test dataset.
-            device (torch.device): Device to run model on.
-            writer (SummaryWriter, optional): For logging to TensorBoard.
-        """
     logger.info(f"\nTraining model: {model_name}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
@@ -305,13 +239,13 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
 
     elif model_name.lower() == "upernet":
         model = UperNetForSemanticSegmentation.from_pretrained(
-            "openmmlab/upernet-swin-small",  #"openmmlab/upernet-convnext-small"
+            "openmmlab/upernet-swin-small",#"openmmlab/upernet-convnext-small"
             num_labels=N_CLASSES,
             ignore_mismatched_sizes=True,
         ).to(device)
-    elif model_name.lower() == "unet_resnet50":
+    elif model_name.lower() == "unet_resnet101":
         model = smp.Unet(
-            encoder_name="resnet50",
+            encoder_name="resnet101",
             encoder_weights="imagenet",
             in_channels=3,
             classes=N_CLASSES,
@@ -337,7 +271,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     )
     checkpoint_base = os.path.join(os.path.dirname(__file__), "Unet_SS/checkpoints")
     os.makedirs(checkpoint_base, exist_ok=True)
-    custom_name = f"{model_name}_model_flair_deeplabv3+.pth"
+    custom_name = f"{model_name}_model_flair_unet_resnet34.pth"
     # Final model save path
     model_save_path = os.path.join(checkpoint_base, custom_name)
     torch.save(model.state_dict(), model_save_path)
@@ -346,24 +280,10 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     evaluate(model, test_loader, device, writer=writer)
     visualisation.visualize_prediction(model, test_loader, device)
 
-
 # ================================
 # Evaluation
 # ================================
 def evaluate(model, dataloader, device, epoch=None, writer=None):
-    """
-        Evaluates model on the provided dataset and logs metrics.
-
-        Args:
-            model (nn.Module): Trained model.
-            dataloader (DataLoader): Dataset to evaluate on.
-            device (torch.device): Device for inference.
-            epoch (int, optional): Current epoch (for logging).
-            writer (SummaryWriter, optional): TensorBoard writer.
-
-        Returns:
-            float: Mean Intersection over Union (mIoU).
-        """
     model.eval()
     iou_macro = MulticlassJaccardIndex(num_classes=N_CLASSES, average='macro').to(device)
     iou_per_class = MulticlassJaccardIndex(num_classes=N_CLASSES, average=None).to(device)
@@ -387,6 +307,7 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
                 logits = model(**batch_inputs)
             else:
                 logits = model(images)
+
 
             # Resize logits if needed
             if logits.shape[-2:] != masks.shape[-2:]:
@@ -434,18 +355,6 @@ def evaluate(model, dataloader, device, epoch=None, writer=None):
 
 
 def visualize_val_predictions(model, val_loader, device, epoch, processor=None, writer=None, num_samples=3):
-    """
-        Visualizes model predictions on a few validation samples.
-
-        Args:
-            model (nn.Module): Trained model.
-            val_loader (DataLoader): Validation dataloader.
-            device (torch.device): CUDA or CPU.
-            epoch (int): Current epoch number.
-            processor (optional): Preprocessing module for HF models.
-            writer (SummaryWriter, optional): TensorBoard writer.
-            num_samples (int): Number of samples to visualize.
-        """
     model.eval()
     with torch.no_grad():
         for images, masks in val_loader:
@@ -460,8 +369,7 @@ def visualize_val_predictions(model, val_loader, device, epoch, processor=None, 
                 outputs = model(images)
 
             if outputs.shape[-2:] != masks.shape[-2:]:
-                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear",
-                                                          align_corners=False)
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False)
 
             preds = torch.argmax(outputs, dim=1).cpu()
 
@@ -477,15 +385,11 @@ def visualize_val_predictions(model, val_loader, device, epoch, processor=None, 
 
             break
 
-
 #=======================================
 # main function
 #=======================================
 
 def main():
-    """
-        Main entry point: prepares datasets, selects model, runs training and evaluation.
-    """
     """parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, choices=["flair", "dlr"], default="dlr")
     args = parser.parse_args()"""
@@ -496,13 +400,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if dataset_name == "flair":
-        train_dataset, val_dataset, test_dataset = prepare_datasets_from_csvs(
+        train_dataset, val_dataset, test_dataset= prepare_datasets_from_csvs(
             train_csv_path=TRAIN_CSV_PATH,
-            val_csv_path=VAL_CSV_PATH,
+            val_csv_path= VAL_CSV_PATH,
             base_dir=BASE_DIR)
     else:  # fallback to DLR dataset
-        train_dataset, val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense",
-                                                                                   model_name="Mask2former")
+         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(ROOT_DIR, dataset_type="SS_Dense", model_name="Mask2former")
 
     """
     logger.info("Checking FLAIR label range...")
@@ -518,16 +421,15 @@ def main():
     logger.info("Label range (first mask):", sample_mask.min().item(), "to", sample_mask.max().item())
     logger.info("Unique labels (first mask):", torch.unique(sample_mask).tolist())"""
 
-    log_dir = f"runs/{dataset_name}_experiment_flair_deeplabv3+{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+    log_dir = f"runs/{dataset_name}_experiment_flair_unet_resnet101{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     try:
-        train_and_evaluate("deeplabv3+", train_dataset, val_dataset, test_dataset, device, writer)
+        train_and_evaluate("unet_resnet101", train_dataset, val_dataset, test_dataset, device, writer)
     except KeyboardInterrupt:
         logger.info("Training interrupted manually.")
     finally:
         writer.close()
-
 
 # ================================
 # Training Script

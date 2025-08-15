@@ -156,7 +156,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
     """for i, (_, mask) in enumerate(train_dataset):
         uniques = torch.unique(mask)
         print(f"Sample {i}: Unique labels:", uniques.tolist())
-        valid = (uniques == 255) | ((uniques >= 0) AC& (uniques < num_classes))
+        valid = (uniques == 255) | ((uniques >= 0) & (uniques < num_classes))
         assert torch.all(valid), f"Invalid label(s) in sample {i}: {uniques.tolist()}"""
 
     return train_dataset, val_dataset, test_dataset
