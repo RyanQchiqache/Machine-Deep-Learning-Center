@@ -90,7 +90,7 @@ def get_loss_and_optimizer(model):
     return criterion, scheduler, optimizer
 
 
-def get_loss_and_optimizer(model):
+"""def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=cfg.model.ignore_class_index)
     #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
@@ -101,7 +101,7 @@ def get_loss_and_optimizer(model):
                                                            factor=cfg.training.scheduler.factor,
                                                            verbose=cfg.training.scheduler.verbose
     )
-    return ce_loss, scheduler, optimizer
+    return ce_loss, scheduler, optimizer"""
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=None):
