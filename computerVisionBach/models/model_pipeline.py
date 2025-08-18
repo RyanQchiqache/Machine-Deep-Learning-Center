@@ -38,12 +38,63 @@ print(smp.encoders.get_encoder_names())
 
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
+def get_loss_and_optimizer(model):
+    dice_loss = DiceLoss(mode='multiclass')
+    ce_loss = nn.CrossEntropyLoss(ignore_index=cfg.model.ignore_class_index)
+
+    # criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
+    criterion = ce_loss  # or use the combined loss above
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=cfg.training.learning_rate,
+        weight_decay=cfg.training.weight_decay,
+        betas=tuple(cfg.training.betas)
+    )
+
+    # SCHEDULER: warmup (LinearLR) → cosine (CosineAnnealingLR)
+    if cfg.training.scheduler.type.lower() == "cosine":
+        warmup_epochs = int(cfg.training.scheduler.warmup_epochs)
+        max_epochs = int(cfg.training.scheduler.max_epochs)
+        eta_min = float(cfg.training.scheduler.eta_min)
+        start_factor = float(cfg.training.scheduler.get("warmup_start_factor", 0.1))
+
+        # Warmup: linearly scale LR from start_factor*base_lr -> base_lr over warmup_epochs
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=start_factor,
+            end_factor=1.0,
+            total_iters=warmup_epochs
+        )
+        # Cosine: anneal from base_lr -> eta_min over the remaining epochs
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max_epochs - warmup_epochs,
+            eta_min=eta_min
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[warmup_epochs]
+        )
+    else:
+        # (fallback) your old plateau scheduler, if you want to keep it configurable
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode=cfg.training.scheduler.mode,
+            patience=cfg.training.scheduler.patience,
+            factor=cfg.training.scheduler.factor,
+            verbose=cfg.training.scheduler.verbose
+        )
+
+    return criterion, scheduler, optimizer
+
 
 def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=cfg.model.ignore_class_index)
     #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate, weight_decay=cfg.training.weight_decay, betas=cfg.training.betas)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                            mode=cfg.training.scheduler.mode,
                                                            patience=cfg.training.scheduler.patience,
@@ -152,7 +203,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     test_loader = DataLoader(test_dataset, batch_size=cfg.training.batch_size, shuffle=False, num_workers=2, pin_memory=True)
     # Just after fetching a batch in your DataLoader loop:
     images, masks = next(iter(train_loader))
-    print("Image range:", images.min().item(), images.max().item())  # Should be around 0–1
+    print("Image range:", images.min().item(), images.max().item())
     print("Mask unique:", masks.unique())
 
     name = model_name.lower()
