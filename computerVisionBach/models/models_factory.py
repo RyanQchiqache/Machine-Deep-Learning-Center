@@ -99,9 +99,9 @@ def _build_deeplabv3plus(num_classes, device, encoder_name, encoder_weights, in_
         in_channels=in_channels,
         classes=num_classes,
         activation=None,
+        encoder_output_stride=encoder_output_stride if encoder_output_stride is not None else 16,
     )
-    if encoder_output_stride is not None:
-        args["encoder_output_stride"] = encoder_output_stride
+
 
     m = smp.DeepLabV3Plus(**args)
     return m.to(device), None
