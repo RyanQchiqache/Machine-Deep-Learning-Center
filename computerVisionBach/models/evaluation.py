@@ -1,4 +1,5 @@
 import time
+from tqdm import tqdm
 from typing import Dict, Iterable, Optional, Sequence
 import logging
 import torch
@@ -150,7 +151,7 @@ def evaluate(
         return tp, fp, fn
 
     with torch.no_grad():
-        for images, masks in dataloader:
+        for images, masks in tqdm(dataloader, desc="Evaluation", leave=False):
             images = images.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
 
