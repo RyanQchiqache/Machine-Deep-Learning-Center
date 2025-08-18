@@ -12,7 +12,7 @@ model:
   overlap: 0.5
   patchify_enabled: true
   smp:
-    encoder_name: "resnet34"
+    encoder_name: "tu-resnest200e"
     encoder_weights: "imagenet"
     in_channels: 3
     encoder_output_stride: 8
@@ -27,18 +27,24 @@ model:
       do_rescale: false
 
 training:
-  batch_size: 12
-  num_epochs: 10
-  learning_rate: 0.001
+  batch_size: 8
+  num_epochs: 70
+  learning_rate: 0.0003
   random_seed: 42
-  patience: 2              # early stopping on mIoU
+  patience: 10              # early stopping on mIoU
+  weight_decay: 0.0004
+  betas: [0.9, 0.999]
   num_reconstructions: 4
   scheduler:
-    type: "ReduceLROnPlateau"
+    type: "cosine"       #"ReduceLROnPlateau"
     mode: "max"
     patience: 5
     factor: 0.5
     verbose: true
+    warmup_epochs: 1      # linear warmup duration (epochs)
+    max_epochs: 70        # total epochs (same as training.epochs)
+    eta_min: 0.0          # final LR at the end of cosine
+    warmup_start_factor: 0.1  # start at 10% of base LR (optional)
   optimizer:
     type: "Adam"
     weight_decay: 0.0
