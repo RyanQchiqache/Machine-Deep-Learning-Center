@@ -5,16 +5,17 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-
+import numpy as np
 from tqdm import tqdm
 from loguru import logger
 from omegaconf import OmegaConf
 
 import torch
 import torch.nn as nn
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR, SequentialLR, LinearLR
 torch.backends.cudnn.enabled = False
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
@@ -36,6 +37,9 @@ from computerVisionBach.models.evaluation import evaluate
 from computerVisionBach.models.models_factory import build_model
 print(smp.encoders.get_encoder_names())
 
+IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 def get_loss_and_optimizer(model):
@@ -45,7 +49,7 @@ def get_loss_and_optimizer(model):
     # criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
     criterion = ce_loss  # or use the combined loss above
 
-    optimizer = torch.optim.AdamW(
+    optimizer = AdamW(
         model.parameters(),
         lr=cfg.training.learning_rate,
         weight_decay=cfg.training.weight_decay,
@@ -60,19 +64,19 @@ def get_loss_and_optimizer(model):
         start_factor = float(cfg.training.scheduler.get("warmup_start_factor", 0.1))
 
         # Warmup: linearly scale LR from start_factor*base_lr -> base_lr over warmup_epochs
-        warmup = torch.optim.lr_scheduler.LinearLR(
+        warmup = LinearLR(
             optimizer,
             start_factor=start_factor,
             end_factor=1.0,
             total_iters=warmup_epochs
         )
         # Cosine: anneal from base_lr -> eta_min over the remaining epochs
-        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+        cosine = CosineAnnealingLR(
             optimizer,
             T_max=max_epochs - warmup_epochs,
             eta_min=eta_min
         )
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
+        scheduler = SequentialLR(
             optimizer,
             schedulers=[warmup, cosine],
             milestones=[warmup_epochs]
@@ -121,15 +125,21 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
         optimizer.zero_grad()
 
         if is_mask2former:
-            batch_inputs = processor(
-                images=images, segmentation_maps=masks, return_tensors="pt"
-            )
-            batch_inputs = {
-                k: (v.to(device) if isinstance(v, torch.Tensor) else [t.to(device) for t in v])
-                for k, v in batch_inputs.items()
-            }
+            imgs = images.detach()
+            imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
+            imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+            segs = masks.detach().cpu().numpy().astype(np.int64)
+
+            batch_inputs = processor(images=list(imgs),
+                                     segmentation_maps=list(segs),
+                                     return_tensors="pt")
+            batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor)
+                                else [t.to(device) for t in v])
+                            for k, v in batch_inputs.items()}
             outputs = model(**batch_inputs)
-            loss = getattr(outputs, "loss", None)
+            loss = outputs.loss
+
+            """loss = getattr(outputs, "loss", None)"""
             if loss is None:
                 logger.warning("outputs.loss is None. Skipping this batch.")
                 continue
@@ -173,6 +183,11 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
             rare_class_ids=rare_class_ids,processor= eval_processor,
             boundary_tolerance_px=3, log_prefix="Val",
         )
+
+        if isinstance(scheduler, ReduceLROnPlateau):
+            scheduler.step(val_metrics["mIoU_macro"])
+        else:
+            scheduler.step()
 
         # scheduler on mIoU (float)
         scheduler.step(val_metrics["mIoU_macro"])
