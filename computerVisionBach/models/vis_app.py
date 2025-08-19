@@ -72,7 +72,7 @@ MODEL_CHECKPOINTS: Dict[str, str] = {
     "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
     "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth"
     "upernet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth",
-    "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
+    "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet101_model_flair_unet.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
     "segformer": "",  # leave empty to use HF weights
 }
 
@@ -250,7 +250,8 @@ def load_model(model_name: str, dataset: str, num_classes: int, encoder_name: st
             in_channels=in_channels,
             classes=num_classes,
         )
-        ckpt = MODEL_CHECKPOINTS.get("unet_resnet", "")  # single, generic checkpoint path
+        ckpt = MODEL_CHECKPOINTS.get("unet_resnet", "") # single, generic checkpoint path
+        print(ckpt)
 
         if ckpt and os.path.exists(ckpt):
             sd = torch.load(ckpt, map_location="cpu")
