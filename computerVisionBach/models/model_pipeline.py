@@ -189,9 +189,6 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
         else:
             scheduler.step()
 
-        # scheduler on mIoU (float)
-        scheduler.step(val_metrics["mIoU_macro"])
-
         # early stopping on mIoU
         if val_metrics["mIoU_macro"] > best_miou:
             best_miou = val_metrics["mIoU_macro"]
