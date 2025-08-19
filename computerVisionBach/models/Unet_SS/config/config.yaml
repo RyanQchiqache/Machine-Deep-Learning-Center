@@ -5,15 +5,15 @@ project:
   version: 1.0
 
 model:
-  name: "DeepLabV3+"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
+  name: "Mask2former"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
   num_classes: 20
   ignore_class_index: 255
   patch_size: 512
   overlap: 0.5
   patchify_enabled: true
   smp:
-    encoder_name: "tu-resnest200e"
-    encoder_weights: "imagenet"
+    encoder_name: "swin_t"
+    encoder_weights: "ade20k"
     in_channels: 3
     encoder_output_stride: 8
 

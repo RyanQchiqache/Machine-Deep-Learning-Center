@@ -23,6 +23,24 @@ transforms = A.Compose([
                 std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
+train_tfms = A.Compose([
+    # 0.5x to 2.0x scaling: factor = 1 + U[-0.5, 1.0]  → [0.5, 2.0]
+    A.RandomScale(scale_limit=(-0.5, 1.0), interpolation=cv2.INTER_LINEAR, p=1.0),
+
+    # make sure we can always take a 512×512 crop after downscaling
+    A.PadIfNeeded(min_height=512, min_width=512, border_mode=cv2.BORDER_REFLECT, p=1.0),
+
+    # DeepLab-style fixed crop
+    A.RandomCrop(512, 512, p=1.0),
+
+    A.HorizontalFlip(p=0.5),
+    A.Rotate(limit=15, border_mode=cv2.BORDER_REFLECT, p=0.3),
+    A.ColorJitter(0.2, 0.2, 0.2, 0.1, p=0.3),
+    A.GaussianBlur(blur_limit=(3, 5), p=0.2),
+
+    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ToTensorV2(),
+])
 val_tf = A.Compose([
     A.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]),
     ToTensorV2()
@@ -148,9 +166,9 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
 
     else:
-        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=m2f_val_tf, relabel_fn=relabel_fn)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=m2f_val_tf, is_test=True)
 
     """num_classes = 20  # or whatever you set in the model
     for i, (_, mask) in enumerate(train_dataset):
