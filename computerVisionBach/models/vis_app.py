@@ -41,6 +41,13 @@ import cv2
 import streamlit as st
 from torchvision import transforms
 from patchify import patchify, unpatchify
+from transformers import SegformerImageProcessor
+from transformers import (
+    AutoImageProcessor,
+    Mask2FormerForUniversalSegmentation,
+    SegformerForSemanticSegmentation,
+    UperNetForSemanticSegmentation,
+)
 
 # Project imports (assumed to exist in your repo)
 from computerVisionBach.models.Unet_SS import utils
@@ -65,6 +72,7 @@ MODELS = [
     "segformer",    # HF Segformer B2
     "upernet",      # HF UPerNet ConvNeXt small
     "unet_resnet",
+    "mask2former",
 ]
 
 # Model checkpoints (adjust paths for your machine)
@@ -72,8 +80,9 @@ MODEL_CHECKPOINTS: Dict[str, str] = {
     "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
     "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth"
     "upernet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/upernet_model.pth",
-    "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet101_model_flair_unet.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
+    "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth", #"/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet101_model_flair_unet.pth",
     "segformer": "",  # leave empty to use HF weights
+    "Mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/dlr/Mask2former/enc-swin_t_w-ade20k/Mask2former_dlr_2025-08-19_14-05-02.pth",
 }
 
 # Normalization for SMP models trained on ImageNet encoders
@@ -233,6 +242,39 @@ def read_uploaded_image(uploaded_file, dataset: str, model_choice: str) -> Tuple
 
     return np_img, disp
 
+# =============================
+# HF processor helpers (no unhashable args)
+# =============================
+
+def _hf_name_or_path(model) -> str:
+    """
+    Derive a stable hub name/path string for the loaded HF model.
+    Falls back to sensible defaults by model_type.
+    """
+    # Prefer the exact thing you loaded
+    name_or_path = getattr(getattr(model, "config", None), "_name_or_path", None)
+    if name_or_path:
+        return name_or_path
+
+    # Fallbacks if the config lost path info
+    mtype = getattr(getattr(model, "config", None), "model_type", None)
+    if mtype == "mask2former":
+        return "facebook/mask2former-swin-small-ade-semantic"
+    if mtype == "segformer":
+        return "nvidia/segformer-b2-finetuned-ade-512-512"
+    if mtype == "upernet":
+        return "openmmlab/upernet-convnext-small"
+    # Generic fallback (works for SegFormer-style processors)
+    return "nvidia/segformer-b2-finetuned-ade-512-512"
+
+
+@st.cache_resource(show_spinner=False)
+def get_processor_by_name(name_or_path: str):
+    """
+    Cached by a plain string → hashable → no UnhashableParamError.
+    """
+    return AutoImageProcessor.from_pretrained(name_or_path)
+
 
 # =============================
 # Model Loading
@@ -312,22 +354,31 @@ def load_model(model_name: str, dataset: str, num_classes: int, encoder_name: st
                 sd = {k: v for k, v in sd.items() if not k.startswith("segmentation_head.")}
             model.load_state_dict(sd, strict=False)
 
+    elif model_name == "mask2former":
+        # HF models are RGB-only; do not advertise 5ch
+        expects_5ch = False
+        name = "facebook/mask2former-swin-small-ade-semantic"
+        class_names = [f"Class_{i}" for i in range(num_classes)]
+        id2label = {i: c for i, c in enumerate(class_names)}
+        model = Mask2FormerForUniversalSegmentation.from_pretrained(
+            name,
+            num_labels=num_classes,
+            id2label=id2label,
+            label2id={v: k for k, v in id2label.items()},
+            ignore_mismatched_sizes=True,
+        )
     elif model_name == "segformer":
-        from transformers import SegformerForSemanticSegmentation
+        expects_5ch = False
         model = SegformerForSemanticSegmentation.from_pretrained(
             "nvidia/segformer-b2-finetuned-ade-512-512",
             num_labels=num_classes, ignore_mismatched_sizes=True
         )
-        # optional: load your segformer ckpt if you have one
-
     elif model_name == "upernet":
-        from transformers import UperNetForSemanticSegmentation
+        expects_5ch = False
         model = UperNetForSemanticSegmentation.from_pretrained(
             "openmmlab/upernet-convnext-small",
             num_labels=num_classes, ignore_mismatched_sizes=True
         )
-        # optional: load your upernet ckpt if you have one
-
     else:
         st.error(f"Unsupported model: {model_name}")
         st.stop()
@@ -342,35 +393,128 @@ def load_model(model_name: str, dataset: str, num_classes: int, encoder_name: st
 # Inference Helpers
 # =============================
 
+# =============================
+# Inference Helpers (REPLACED)
+# =============================
+
 def _to_model_input(tensor_image_chw: torch.Tensor) -> torch.Tensor:
     """Normalize to ImageNet stats for SMP backbones (3ch only)."""
     return NORMALIZE(tensor_image_chw)
 
+def _ensure_rgb_uint8(np_patch: np.ndarray) -> np.ndarray:
+    """
+    Ensures (H, W, 3) uint8 in [0,255] for HF processors.
+    If more than 3 channels are present, uses the first 3 with a warning.
+    If float, scales to [0,255].
+    """
+    if np_patch.ndim != 3:
+        raise ValueError(f"Expected HWC, got shape {np_patch.shape}")
+    H, W, C = np_patch.shape
+    if C < 3:
+        raise ValueError("HF models require 3-channel RGB input.")
+    if C > 3:
+        # Keep first 3 channels and warn once via Streamlit
+        st.warning("Input has >3 channels; using first 3 for HF model.", icon="!!!!")
+        np_patch = np_patch[:, :, :3]
+
+    if np_patch.dtype != np.uint8:
+        # If values look like 0..1 floats, scale up; otherwise clip to 0..255
+        mx = float(np.max(np_patch)) if np_patch.size else 1.0
+        if mx <= 1.0:
+            np_patch = (np_patch * 255.0).astype(np.uint8)
+        else:
+            np_patch = np.clip(np_patch, 0, 255).astype(np.uint8)
+    return np_patch
+
+def _m2f_postprocess_semantic(processor, outputs, H: int, W: int):
+    """
+    Version‑safe post‑processing for Mask2Former semantic maps.
+    Returns a (H, W) int64 numpy array.
+    """
+    if hasattr(processor, "post_process_semantic"):
+        seg = processor.post_process_semantic(outputs, target_sizes=[(H, W)])[0]["segmentation"]
+    elif hasattr(processor, "post_process_semantic_segmentation"):
+        # Older HF versions (e.g., 4.26–4.27)
+        seg = processor.post_process_semantic_segmentation(outputs, target_sizes=[(H, W)])[0]
+    else:
+        raise AttributeError(
+            "This ImageProcessor lacks semantic post‑processing. "
+            "Upgrade transformers or provide a compatible processor."
+        )
+    # seg can be Tensor or numpy; normalize to numpy int64
+    if hasattr(seg, "detach"):
+        seg = seg.detach().cpu().numpy()
+    return seg.astype(np.int64)
+
+
 
 def _forward_model(model: torch.nn.Module, np_patch: np.ndarray) -> np.ndarray:
-    """Run model on a single patch (HWC). Returns argmax mask (H, W)."""
-    with torch.no_grad():
-        if hasattr(model, "config") and hasattr(model.config, "num_labels"):
-            # HF transformer
-            from transformers import SegformerImageProcessor
-            processor = SegformerImageProcessor.from_pretrained(
-                "nvidia/segformer-b2-finetuned-ade-512-512"
-            )
-            inputs = processor(images=np_patch, return_tensors="pt", do_rescale=False).to(device)
-            logits = model(**inputs).logits
-        else:
-            # SMP model expects BCHW float in [0,1], normalized
-            x = torch.tensor(np_patch.transpose(2, 0, 1) / 255.0, dtype=torch.float32)
-            if x.shape[0] == 3:  # only normalize RGB; skip for 5-ch FLAIR
-                x = _to_model_input(x)
-            x = x.unsqueeze(0).to(device)
-            logits = model(x)
+    """
+    Run model on a single patch (HWC). Returns argmax mask (H, W).
+    - SMP models: BCHW float, normalized (RGB only)
+    - SegFormer/UPerNet (HF): AutoImageProcessor + .logits upsample -> argmax
+    - Mask2Former (HF): AutoImageProcessor + post_process_semantic (no manual upsample)
+    """
+    H, W = np_patch.shape[:2]
 
-        if logits.shape[-2:] != np_patch.shape[:2]:
-            logits = F.interpolate(logits, size=np_patch.shape[:2], mode="bilinear", align_corners=False)
+    # ================= HF MODELS =================
+    if hasattr(model, "config") and hasattr(model.config, "model_type"):
+        model_type = model.config.model_type
+
+        # Guard: HF models are RGB only
+        if np_patch.shape[-1] != 3:
+            # Try to adapt; if still not 3ch, stop
+            try:
+                rgb_patch = _ensure_rgb_uint8(np_patch)
+            except Exception as e:
+                st.error(f"HF model expects 3-channel RGB input. {e}")
+                st.stop()
+        else:
+            rgb_patch = _ensure_rgb_uint8(np_patch)
+
+        processor = get_processor_by_name(_hf_name_or_path(model))
+
+        with torch.no_grad():
+            inputs = processor(images=[rgb_patch], return_tensors="pt")  # do_rescale handled by processor
+            # Move tensors to device
+            inputs = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in inputs.items()}
+            outputs = model(**inputs)
+
+            if model_type == "mask2former":
+                out = _m2f_postprocess_semantic(processor, outputs, H, W)
+                return out
+
+            # SegFormer / UPerNet path: upsample logits to (H,W)
+            if hasattr(outputs, "logits"):
+                logits = outputs.logits  # (B,C,h,w)
+                if logits.shape[-2:] != (H, W):
+                    logits = F.interpolate(logits, size=(H, W), mode="bilinear", align_corners=False)
+                pred = torch.argmax(logits, dim=1).detach().cpu().numpy()[0]
+                return pred.astype(np.int64)
+
+            # Fallback (shouldn’t happen)
+            st.error("Unexpected HF model output: missing .logits and not Mask2Former.")
+            st.stop()
+
+    # ================= SMP MODELS =================
+    with torch.no_grad():
+        # SMP expects BCHW floats in [0,1]
+        x = torch.tensor(np_patch.transpose(2, 0, 1), dtype=torch.float32)
+        x = x / 255.0 if x.max() > 1.0 else x
+
+        # Normalize only for 3ch (your NORMALIZE is ImageNet stats)
+        if x.shape[0] == 3:
+            x = _to_model_input(x)
+
+        x = x.unsqueeze(0).to(device)
+        logits = model(x)  # (B,C,h,w)
+
+        if logits.shape[-2:] != (H, W):
+            logits = F.interpolate(logits, size=(H, W), mode="bilinear", align_corners=False)
 
         pred = torch.argmax(logits, dim=1).detach().cpu().numpy()[0]
-        return pred
+        return pred.astype(np.int64)
+
 
 
 def predict_full_image_patchwise(np_img: np.ndarray, crop: int) -> np.ndarray:
@@ -504,11 +648,6 @@ if st.button("Run Segmentation"):
             pred_rgb = cv2.resize(pred_rgb, (base_rgb.shape[1], base_rgb.shape[0]))
 
         overlay = cv2.addWeighted(safe_to_uint8(base_rgb), 0.6, safe_to_uint8(pred_rgb), 0.4, 0)
-
-    if st.session_state.get("show_legend", False):
-        st.subheader("Legend")
-        legend_items = get_legend_items(dataset, int(st.session_state.num_classes))
-        render_legend(legend_items, cols=4)  # change cols to 3/5 if you prefer
 
     st.subheader("Segmentation Results")
     c1, c2 = st.columns(2)
