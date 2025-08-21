@@ -5,6 +5,8 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from omegaconf import OmegaConf
+from pathlib import Path
+config_file = Path(__file__).resolve().parent / "config" / "config.yaml"
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 
 import os, re

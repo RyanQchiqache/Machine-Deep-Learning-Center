@@ -1,15 +1,16 @@
 from __future__ import annotations
+import torch
 import inspect
+import pathlib
 import segmentation_models_pytorch as smp
+from functools import partial
+from omegaconf import OmegaConf
 from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
-from functools import partial
-from omegaconf import OmegaConf
-import torch
-
-cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+config_file = pathlib.Path(__file__).resolve().parent / "config"/ "config.yaml"
+cfg = OmegaConf.load(config_file)
 
 # ---- optional: central defaults
 DEFAULTS = {
@@ -149,7 +150,6 @@ def build_model(
     if key not in _MODEL_REGISTRY:
         raise ValueError(f"Unknown model name: {model_name}. Available: {sorted(_MODEL_REGISTRY.keys())}")
 
-    # fill defaults for SMP builders
     base = {
         "encoder_name": encoder_name or DEFAULTS["encoder_name"],
         "encoder_weights": encoder_weights or DEFAULTS["encoder_weights"],
@@ -160,11 +160,14 @@ def build_model(
     }
 
     def _filtered_kwargs(fn, kwargs):
+        """
+        understand it as If the road (the builder) has an open lane (**kwargs), let all cars (keys) pass.
+        """
         sig = inspect.signature(fn)
         if any(p.kind is p.VAR_KEYWORD for p in sig.parameters.values()):
-            return kwargs  # builder accepts **kwargs → safe
+            return kwargs
         return {k: v for k, v in kwargs.items() if k in sig.parameters}
-    base.update(extra)  # extras override defaults cleanly
+    base.update(extra)
     kwargs = base
 
     builder = _MODEL_REGISTRY[key]
