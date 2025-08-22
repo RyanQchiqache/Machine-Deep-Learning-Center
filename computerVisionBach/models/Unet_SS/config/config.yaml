@@ -1,12 +1,12 @@
 project:
   name: "computerVisionBach-segmentation"
-  dataset: "dlr"     # one of: ["flair", "dlr"]
+  dataset: "flair"     # one of: ["flair", "dlr"]
   description: "Default config for segmentation training"
   version: 1.0
 
 model:
   name: "Mask2former"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
-  num_classes: 20
+  num_classes: 12
   ignore_class_index: 255
   patch_size: 512
   overlap: 0.5
@@ -27,11 +27,11 @@ model:
       do_rescale: false
 
 training:
-  batch_size: 8
+  batch_size: 12
   num_epochs: 70
   learning_rate: 0.0003
   random_seed: 42
-  patience: 10              # early stopping on mIoU
+  patience: 12             # early stopping on mIoU
   weight_decay: 0.0004
   betas: [0.9, 0.999]
   num_reconstructions: 4
