@@ -166,42 +166,47 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
     best_model_wts = copy.deepcopy(model.state_dict())
     epochs_without_improvement = 0
 
-    for epoch in range(num_epochs):
-        loss = train_one_epoch(model, train_loader, criterion, optimizer, device, processor=processor)
-        logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
-        if writer:
-            writer.add_scalar("Loss/train", loss, epoch)
+    try:
+        for epoch in range(num_epochs):
+            loss = train_one_epoch(model, train_loader, criterion, optimizer, device, processor=processor)
+            logger.info(f"Epoch [{epoch + 1}/{num_epochs}] - Loss: {loss:.4f}")
+            if writer:
+                writer.add_scalar("Loss/train", loss, epoch)
 
-        # choose the right processor for eval
-        eval_processor = processor
+            # choose the right processor for eval
+            eval_processor = processor
 
-        # run thesis-grade evaluation (returns dict)
-        val_metrics = evaluate(
-            model, val_loader, device,
-            epoch=epoch, writer=writer,
-            num_classes=cfg.model.num_classes, ignore_index=cfg.model.ignore_class_index,
-            rare_class_ids=rare_class_ids,processor= eval_processor,
-            boundary_tolerance_px=3, log_prefix="Val",
-        )
+            # run thesis-grade evaluation (returns dict)
+            val_metrics = evaluate(
+                model, val_loader, device,
+                epoch=epoch, writer=writer,
+                num_classes=cfg.model.num_classes, ignore_index=cfg.model.ignore_class_index,
+                rare_class_ids=rare_class_ids, processor=eval_processor,
+                boundary_tolerance_px=3, log_prefix="Val",
+            )
 
-        if isinstance(scheduler, ReduceLROnPlateau):
-            scheduler.step(val_metrics["mIoU_macro"])
-        else:
-            scheduler.step()
+            if isinstance(scheduler, ReduceLROnPlateau):
+                scheduler.step(val_metrics["mIoU_macro"])
+            else:
+                scheduler.step()
 
-        # early stopping on mIoU
-        if val_metrics["mIoU_macro"] > best_miou:
-            best_miou = val_metrics["mIoU_macro"]
-            best_model_wts = copy.deepcopy(model.state_dict())
-            epochs_without_improvement = 0
-            logger.info(f"mIoU improved to {best_miou:.4f}, saving model weights.")
-        else:
-            epochs_without_improvement += 1
-            logger.info(f"No improvement in mIoU for {epochs_without_improvement} epochs.")
+            # early stopping on mIoU
+            if val_metrics["mIoU_macro"] > best_miou:
+                best_miou = val_metrics["mIoU_macro"]
+                best_model_wts = copy.deepcopy(model.state_dict())
+                epochs_without_improvement = 0
+                logger.info(f"mIoU improved to {best_miou:.4f}, saving model weights.")
+            else:
+                epochs_without_improvement += 1
+                logger.info(f"No improvement in mIoU for {epochs_without_improvement} epochs.")
 
-        if epochs_without_improvement >= cfg.training.patience:
-            logger.info(f"Early stopping triggered after {cfg.training.patience} epochs without improvement.")
-            break
+            if epochs_without_improvement >= cfg.training.patience:
+                logger.info(f"Early stopping triggered after {cfg.training.patience} epochs without improvement.")
+                break
+    except KeyboardInterrupt:
+        logger.info("Interrupted, saving best weights so far...")
+        torch.save(best_model_wts, "best_model_interrupt.pth")
+        raise
 
     model.load_state_dict(best_model_wts)
     return model, best_miou
@@ -216,7 +221,9 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     # Just after fetching a batch in your DataLoader loop:
     images, masks = next(iter(train_loader))
     print("Image range:", images.min().item(), images.max().item())
-    print("Mask unique:", masks.unique())
+    for i in range(10):
+        _, masks = next(iter(train_loader))
+        print("Mask unique:", masks.unique())
 
     name = model_name.lower()
     hf_ckpt = {
