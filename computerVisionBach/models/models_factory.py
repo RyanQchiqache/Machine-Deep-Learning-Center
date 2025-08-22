@@ -9,8 +9,8 @@ from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
-config_file = pathlib.Path(__file__).resolve().parent / "config"/ "config.yaml"
-cfg = OmegaConf.load(config_file)
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
 
 # ---- optional: central defaults
 DEFAULTS = {
