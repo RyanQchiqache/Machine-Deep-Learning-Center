@@ -149,11 +149,13 @@ def plot_history(train_hist, test_hist):
 #==============================
 # activation and saliency Maps
 # =============================
-
-model_resnet = torchvision.models.resnet50(weights=False).to(device)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
+model_resnet = torchvision.models.resnet50(weights=torchvision.models.ResNet34_Weights).to(device) # initialize model "resnet50" with random weights
 print(model_resnet)
+model_resnet.eval()
 
-image_pug = cv2.imread("/home/q/qchiqache/PycharmProjects/Machine-Deep-Learning-Center/ComputerVisionCourse/Exercise04/pug.jpg", cv2.IMREAD_COLOR)
+image_pug = cv2.imread("/Users/ryanqchiqache/PycharmProjects/Machine-Learning-Learning-Center/ComputerVisionCourse/Exercise04/pug.jpg", cv2.IMREAD_COLOR)
 image_pug_cv = cv2.cvtColor(image_pug, cv2.COLOR_RGB2BGR)
 
 pil_img = Image.fromarray(image_pug_cv)
@@ -165,7 +167,7 @@ transforming_dog = T.Compose([
 transformed_pug = transforming_dog(pil_img).unsqueeze(0).to(device)
 
 image_np = (transformed_pug
-             .squeeze(0)
+            .squeeze(0)
             .permute(1,2,0)
             .cpu()
             .numpy())
@@ -174,6 +176,42 @@ print(image_np.shape)
 
 # Activation map
 activation_map = {}
+activations = []
+gradients = []
+
+def get_activation_hook(model, input, output):
+    activations.append(output.detach())
+
+def get_gradient_hook(model, grad_input, grad_output):
+    print(f"{grad_input}-{model}-{grad_output}")
+    gradients.append(grad_output[0].detach())
+
+target_layer = model_resnet.layer4[-1]
+target_layer.register_forward_hook(get_activation_hook())
+target_layer.register_full_backward_hook(get_gradient_hook())
+
+def grad_cam(activations, gradients):
+    grad, act= gradients[-1], activations[-1]
+    print(f"grad.shape:{grad.shape}-- act.shape:{act.shape}")
+    weights = grad.mean(dim=(2,3)) #we need the mean over the last dim aka over the channels (7,7) depending in the output layer
+    print(f"weights.shape:{weights.shape}")
+    cam = (weights.view(-1,1,1) * act[0]).sum()# channel wise multiplication sum between act and grad so we need to make grad into 3 dim
+    print(f"cam.shape:{cam.shape}")
+    cam = torch.relu(cam)
+    cam -= cam.min()
+    cam /= cam.max() + 1e-8
+    return cam.cpu().numpy()
+
+model_resnet.zero_grad()
+activations.clear()
+gradients.clear()
+output = model_resnet(transformed_pug)
+pred_class = torch.argmax().item()
+#print(f"Predicted class: {pred_class} - {class_names[pred_class]}")
+
+output[0, pred_class].backward()
+
+
 def get_activation(name:str):
     def hook (model, input, output):
         activation_map[name] = output.detach()
@@ -214,6 +252,7 @@ print("conv1 output shape:", activation_map['layer4_conv1'].shape)
 visualize_activations(activation_map["conv1"], "conv1", 6)
 visualize_activations(activation_map["layer3_conv1"], "layer3_conv1", 6)
 visualize_activations(activation_map["layer4_conv1"], "layer4_conv1", 6)
+
 
 if __name__ == "__main__":
     # ==============================
