@@ -26,8 +26,7 @@ from segmentation_models_pytorch.losses import DiceLoss
 
 import transformers
 print("Transformers version:", transformers.__version__)
-from transformers import SegformerForSemanticSegmentation, UperNetForSemanticSegmentation
-from transformers import Mask2FormerForUniversalSegmentation
+from transformers import Mask2FormerForUniversalSegmentation, SegformerForSemanticSegmentation, UperNetForSemanticSegmentation
 
 
 from computerVisionBach.models.Unet_SS import visualisation, utils
@@ -112,19 +111,33 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
     model.train()
     running_loss = 0.0
     is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
+    is_segformer= isinstance(model, SegformerForSemanticSegmentation)
 
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
 
-        """if isinstance(model, PreTrainedModel):
-            # Convert to numpy and preprocess
-            images_np = [img.permute(1, 2, 0).cpu().numpy() for img in images]
-            inputs = processor(images=images_np, return_tensors="pt", do_rescale=False).to(device)
-            outputs = model(**inputs).logits
-        else:"""
         optimizer.zero_grad()
 
-        if is_mask2former:
+        if is_segformer:
+            imgs = images.detach()
+            imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
+            imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+            segs = masks.detach().cpu().numpy().astype(np.int64)
+            batch = processor(
+                images=list(imgs),
+                segmentation_maps=list(segs),
+                return_tensors="pt",
+            )
+
+            pixel_values = batch["pixel_values"].to(device)
+            labels_t = batch["labels"].to(device).long()
+
+            outputs = model(pixel_values=pixel_values, labels=labels_t)
+            loss = outputs.loss
+
+
+        elif is_mask2former:
+            #imgs_np = images if isinstance(images, (list, np.ndarray)) else images.cpu().numpy()
             imgs = images.detach()
             imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
             imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
@@ -220,10 +233,10 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     test_loader = DataLoader(test_dataset, batch_size=cfg.training.batch_size, shuffle=False, num_workers=2, pin_memory=True)
     # Just after fetching a batch in your DataLoader loop:
     images, masks = next(iter(train_loader))
-    print("Image range:", images.min().item(), images.max().item())
+    """print("Image range:", images.min().item(), images.max().item())
     for i in range(10):
         _, masks = next(iter(train_loader))
-        print("Mask unique:", masks.unique())
+        print("Mask unique:", masks.unique())"""
 
     name = model_name.lower()
     hf_ckpt = {
