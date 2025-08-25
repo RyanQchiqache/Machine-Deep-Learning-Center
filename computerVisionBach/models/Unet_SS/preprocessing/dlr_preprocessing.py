@@ -62,6 +62,12 @@ m2f_val_tf = A.Compose([
     ToTensorV2()
 ])
 
+sg_train_tf = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.Rotate(limit=25),
+])
 
 # =====================================
 # patchify and load data DLR skyscapes
@@ -161,12 +167,18 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         return relabeled
 
     if model_name == "Mask2former":
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=m2f_val_tf, relabel_fn=relabel_fn)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=m2f_val_tf)
+
+    elif model_name == "segformer":
         train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=m2f_val_tf)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=m2f_val_tf)
+
 
     else:
-        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn, use_processor=False)
         val_dataset = SatelliteDataset(X_val, y_val, transform=m2f_val_tf, relabel_fn=relabel_fn)
         test_dataset = SatelliteDataset(X_test, masks=None, transform=m2f_val_tf, is_test=True)
 
