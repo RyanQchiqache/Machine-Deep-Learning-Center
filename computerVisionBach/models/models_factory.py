@@ -9,6 +9,7 @@ from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
+from transformers import AutoImageProcessor
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 
@@ -20,7 +21,14 @@ DEFAULTS = {
 }
 
 # ---- helpers for HF models so return signature is consistent
-from transformers import AutoImageProcessor
+
+def _ensure_label_maps(num_classes, class_names=None):
+    if class_names is None:
+        class_names = [f"Class_{i}" for i in range(num_classes)]
+    assert len(class_names) == num_classes, "class_names must have length == num_classes"
+    id2label = {i: name for i, name in enumerate(class_names)}
+    label2id = {name: i for i, name in id2label.items()}
+    return id2label, label2id
 
 def _build_mask2former(num_classes, device, class_names=None,
                        hf_name=None, ignore_index=255,
@@ -33,22 +41,31 @@ def _build_mask2former(num_classes, device, class_names=None,
         class_names = [f"Class_{i}" for i in range(num_classes)]
     id2label = {i: c for i, c in enumerate(class_names)}
     model = Mask2FormerForUniversalSegmentation.from_pretrained(
-        name, num_labels=num_classes, id2label=id2label,
+        name,
+        num_labels=num_classes,
+        id2label=id2label,
         label2id={v: k for k, v in id2label.items()},
         ignore_mismatched_sizes=True,
     )
     model.config.ignore_index = ignore_index
     return model.to(device), processor
 
-def _build_segformer(num_classes, device,
-                     hf_name=None, reduce_labels=False, do_rescale=False, **_):
+def _build_segformer(num_classes, device, class_names=None,
+                     hf_name=None, ignore_index=255,
+                     reduce_labels=False, do_rescale=True, **_):
     name = hf_name or "nvidia/segformer-b2-finetuned-ade-512-512"
     processor = AutoImageProcessor.from_pretrained(
         name, reduce_labels=reduce_labels, do_rescale=do_rescale
     )
+    id2label, label2id = _ensure_label_maps(num_classes, class_names)
     model = SegformerForSemanticSegmentation.from_pretrained(
-        name, num_labels=num_classes, ignore_mismatched_sizes=True
+        name,
+        num_labels=num_classes,
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True,
     )
+    model.config.ignore_index = ignore_index
     return model.to(device), processor
 
 def _build_upernet(num_classes, device,
