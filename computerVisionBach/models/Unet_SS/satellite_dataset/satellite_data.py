@@ -8,7 +8,7 @@ import rasterio
 import cv2
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None, use_processor: bool = False):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -19,6 +19,7 @@ class SatelliteDataset(Dataset):
         self.relabel_fn = relabel_fn
         self.is_test = is_test
         self.allowed_labels = allowed_labels
+        self.use_processor = use_processor
 
     def __len__(self):
         return len(self.images)
@@ -103,8 +104,11 @@ class SatelliteDataset(Dataset):
             image = transformed["image"]
             mask = transformed["mask"].long()
         else:
-            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
-            mask = torch.from_numpy(mask).long()
+            if self.use_processor:
+                return image, mask
+            else:
+                image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
+                mask = torch.from_numpy(mask).long()
 
         return image, mask
 
