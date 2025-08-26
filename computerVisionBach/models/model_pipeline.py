@@ -119,24 +119,23 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
         optimizer.zero_grad()
 
         if is_segformer:
-            imgs = images.detach()
-            imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
-            imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
-            segs = masks.detach().cpu().numpy().astype(np.int64)
-            batch = processor(
-                images=list(imgs),
-                segmentation_maps=list(segs),
-                return_tensors="pt",
-            )
+            imgs = [img if isinstance(img, np.ndarray) else img.cpu().permute(1, 2, 0).numpy() for img in images]
+            segs = [m.astype(np.int64) for m in masks]
 
-            pixel_values = batch["pixel_values"].to(device)
-            labels_t = batch["labels"].to(device).long()
+            batch = processor(
+                images=imgs,
+                segmentation_maps=segs,
+                return_tensors="pt"
+            )
+            pixel_values = batch["pixel_values"].to(device)  # (B,3,H',W')
+            labels_t = batch["labels"].to(device).long()  # (B,H',W'), 0..19 or 255
 
             outputs = model(pixel_values=pixel_values, labels=labels_t)
             loss = outputs.loss
 
 
         elif is_mask2former:
+            #TODO : Try to see if we can make mask2former work without normalisaing and then not normalising "double work"
             #imgs_np = images if isinstance(images, (list, np.ndarray)) else images.cpu().numpy()
             imgs = images.detach()
             imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
@@ -231,8 +230,8 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     train_loader = DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=cfg.training.batch_size, shuffle=False, num_workers=2, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=cfg.training.batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    # Just after fetching a batch in your DataLoader loop:
     images, masks = next(iter(train_loader))
+    # for looking at some label mismatch in 10 iterations for debugging
     """print("Image range:", images.min().item(), images.max().item())
     for i in range(10):
         _, masks = next(iter(train_loader))
