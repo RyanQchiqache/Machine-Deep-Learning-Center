@@ -103,12 +103,12 @@ class SatelliteDataset(Dataset):
             transformed = self.transform(image=image, mask=mask)
             image = transformed["image"]
             mask = transformed["mask"].long()
-        else:
+        else:# TODO: check both woth transformation and without how things will work
             if self.use_processor:
                 return image, mask
             else:
                 image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
                 mask = torch.from_numpy(mask).long()
-
+        print(f"[Dataset] idx={idx} | image={type(image)}, {getattr(image, 'shape', None)} | mask={type(mask)}, {getattr(mask, 'shape', None)}")
         return image, mask
 
