@@ -72,12 +72,13 @@ def _build_mask2former(num_classes, device, class_names=None,
 
 def _build_segformer(num_classes, device, class_names=None,
                      hf_name=None, ignore_index=255,
-                     reduce_labels=False, do_rescale=True, **_):
+                     reduce_labels=False, do_rescale=False, **_):
     name = hf_name or "nvidia/segformer-b2-finetuned-ade-512-512"
     processor = AutoImageProcessor.from_pretrained(
         name,
         reduce_labels=reduce_labels,   # MUST be False for your 0..19 labels
-        do_rescale=do_rescale          # OK to keep True for uint8 inputs
+        do_rescale=do_rescale,         # OK to keep True for uint8 inputs
+        size = {"height": 512, "width": 512}
         # (optional) you can also set size={'height':512,'width':512} to control resize
     )
     id2label = {i: (class_names[i] if class_names else str(i)) for i in range(num_classes)}
@@ -93,15 +94,23 @@ def _build_segformer(num_classes, device, class_names=None,
     model.config.ignore_index = ignore_index  # 255
     return model.to(device), processor
 
-def _build_upernet(num_classes, device,
-                   hf_name=None, reduce_labels=False, do_rescale=False, **_):
+def _build_upernet(num_classes, device, class_names=None,
+                     hf_name=None, ignore_index=255,
+                     reduce_labels=False, do_rescale=False, **_):
     name = hf_name or "openmmlab/upernet-swin-small"
     processor = AutoImageProcessor.from_pretrained(
         name, reduce_labels=reduce_labels, do_rescale=do_rescale
     )
+    id2label = {i: (class_names[i] if class_names else str(i)) for i in range(num_classes)}
+    label2id = {v: k for k, v in id2label.items()}
     model = UperNetForSemanticSegmentation.from_pretrained(
-        name, num_labels=num_classes, ignore_mismatched_sizes=True
+        name,
+        num_labels=num_classes,
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True,
     )
+    model.config.ignore_index = ignore_index
     return model.to(device), processor
 
 
