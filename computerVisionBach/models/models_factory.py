@@ -79,7 +79,6 @@ def _build_segformer(num_classes, device, class_names=None,
         reduce_labels=reduce_labels,   # MUST be False for your 0..19 labels
         do_rescale=do_rescale,         # OK to keep True for uint8 inputs
         size = {"height": 512, "width": 512}
-        # (optional) you can also set size={'height':512,'width':512} to control resize
     )
     id2label = {i: (class_names[i] if class_names else str(i)) for i in range(num_classes)}
     label2id = {v: k for k, v in id2label.items()}
