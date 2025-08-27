@@ -1,7 +1,7 @@
 import time
 from tqdm import tqdm
 from typing import Dict, Iterable, Optional, Sequence
-import logging
+from loguru import logger
 import torch
 import torch.nn.functional as F
 from torchmetrics.classification import MulticlassJaccardIndex, MulticlassAccuracy
@@ -291,10 +291,8 @@ def evaluate(
         for k, val in enumerate(per_class_ious.tolist()):
             writer.add_scalar(f"{log_prefix}/IoU_Class_{k}", float(val), epoch)
 
-    logger = logging.getLogger(__name__)
-
     per_cls = per_class_ious.detach().float().cpu().tolist()
-    logger.info(f"{log_prefix} per-class IoUs (epoch {epoch if epoch is not None else '-'})")
+    logger.success(f"✓ Mean IoU: {miou_macro:.4f}")
     for k, v in enumerate(per_cls):
         if k == ignore_index:
             continue
