@@ -110,46 +110,78 @@ def get_loss_and_optimizer(model):
 def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=None):
     model.train()
     running_loss = 0.0
-    is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation)
-    is_segformer= isinstance(model, SegformerForSemanticSegmentation)
+    model_type = getattr(getattr(model, "config", None), "model_type", "").lower()
+    is_mask2former = isinstance(model, Mask2FormerForUniversalSegmentation) or model_type == "mask2former"
+    is_hf_semseg = isinstance(model, (SegformerForSemanticSegmentation, UperNetForSemanticSegmentation)) \
+                   or model_type in {"segformer", "upernet"}
 
     for images, masks in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
 
         optimizer.zero_grad()
 
-        if is_segformer:
-            imgs = [img if isinstance(img, np.ndarray) else img.cpu().permute(1, 2, 0).numpy() for img in images]
-            segs = [m.astype(np.int64) for m in masks]
+        if is_hf_semseg:
+            """imgs = [img if isinstance(img, np.ndarray) else img.cpu().permute(1, 2, 0).numpy() for img in images]
+            segs = [m.astype(np.int64) for m in masks]"""
 
             batch = processor(
-                images=imgs,
-                segmentation_maps=segs,
+                images=images,
+                segmentation_maps=masks,
                 return_tensors="pt"
             )
-            pixel_values = batch["pixel_values"].to(device)  # (B,3,H',W')
-            labels_t = batch["labels"].to(device).long()  # (B,H',W'), 0..19 or 255
+            pixel_values = batch["pixel_values"].to(device)  # (B,3,H,W)
+            labels_t = batch["labels"].to(device).long()  # (B,H,W)
+
+            debug_img = images[0]
+            debug_batch = processor(images=[debug_img], return_tensors="pt")
+            debug_pixel_values = debug_batch["pixel_values"]
+
+            """print("Post-processor tensor stats:")
+            print("dtype:", debug_pixel_values.dtype)  # torch.float32
+            print("shape:", debug_pixel_values.shape)  # (1, 3, 512, 512)
+            print("range:", debug_pixel_values.min().item(), debug_pixel_values.max().item())  # should be ~[-2, +2]"""
 
             outputs = model(pixel_values=pixel_values, labels=labels_t)
             loss = outputs.loss
 
-
         elif is_mask2former:
             #TODO : Try to see if we can make mask2former work without normalisaing and then not normalising "double work"
-            #imgs_np = images if isinstance(images, (list, np.ndarray)) else images.cpu().numpy()
-            imgs = images.detach()
-            imgs = imgs * IMAGENET_STD.to(imgs.device) + IMAGENET_MEAN.to(imgs.device)
-            imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
-            segs = masks.detach().cpu().numpy().astype(np.int64)
-
-            batch_inputs = processor(images=list(imgs),
-                                     segmentation_maps=list(segs),
+            batch_inputs = processor(images=list(images),
+                                     segmentation_maps=list(masks),
                                      return_tensors="pt")
+
+            debug_img = images[0]  # RGB, uint8
+            debug_batch = processor(images=[debug_img], return_tensors="pt")
+            pixel_values = debug_batch["pixel_values"]
+            print("[Mask2Former] pixel_values stats:")
+            print("dtype:", pixel_values.dtype)  # torch.float32
+            print("shape:", pixel_values.shape)  # (1, 3, H, W)
+            print("range:", pixel_values.min().item(), pixel_values.max().item())  # expected range depends on normalization
+
             batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor)
                                 else [t.to(device) for t in v])
                             for k, v in batch_inputs.items()}
             outputs = model(**batch_inputs)
             loss = outputs.loss
+            # For quick debug preds (resize logits to GT size just in case)
+            with torch.no_grad():
+                logits = outputs.logits  # (B, C, h, w)
+                if logits.shape[-2:] != masks.shape[-2:]:
+                    logits = torch.nn.functional.interpolate(
+                        logits, size=masks.shape[-2:], mode="bilinear", align_corners=False
+                    )
+                preds = logits.argmax(dim=1)
+                # print("Unique preds:", torch.unique(preds))  # optional
+
+            # Get per-pixel predictions for debugging using postprocessing
+            with torch.no_grad():
+                H, W = masks.shape[-2], masks.shape[-1]
+                pp = processor.post_process_semantic_segmentation(
+                    outputs=outputs,
+                    target_sizes=[(H, W)] * masks.shape[0]
+                )  # list of (H, W) tensors
+                preds = torch.stack(pp, dim=0)  # (B, H, W)
+                # print("Unique preds:", torch.unique(preds))  # optional
 
             """loss = getattr(outputs, "loss", None)"""
             if loss is None:
@@ -162,7 +194,9 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
                     outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False
                 )
             loss = criterion(outputs, masks)
-
+        with torch.no_grad():
+            preds = outputs.logits.argmax(dim=1)  # shape: (B, H, W)
+            #print("Unique preds:", torch.unique(preds))
         loss.backward()
         optimizer.step()
 
@@ -265,6 +299,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
         ignore_index=cfg.model.ignore_class_index,
         reduce_labels=cfg.model.hf.processor.reduce_labels,
         do_rescale=cfg.model.hf.processor.do_rescale,
+        do_normalize=cfg.model.hf.processor.do_normalize,
     )
 
     criterion, scheduler, optimizer = get_loss_and_optimizer(model)
