@@ -5,15 +5,15 @@ project:
   version: 1.0
 
 model:
-  name: "SegFormer"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
+  name: "UPerNet"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
   num_classes: 20
   ignore_class_index: 255
   patch_size: 512
   overlap: 0.5
   patchify_enabled: true
   smp:
-    encoder_name: "trying_with_relabel"
-    encoder_weights: "ade20k"
+    encoder_name: "nvidia_seg"
+    encoder_weights: "trying_to_relabel"
     in_channels: 3
     encoder_output_stride: 8
 
@@ -24,14 +24,15 @@ model:
       upernet:     "openmmlab/upernet-swin-small"
     processor:
       reduce_labels: false
-      do_rescale: false
+      do_rescale: true
+      do_normalize: true
 
 training:
-  batch_size: 11
+  batch_size: 8
   num_epochs: 70
-  learning_rate: 0.0003
+  learning_rate: 0.0004
   random_seed: 42
-  patience: 15            # early stopping on mIoU
+  patience: 12           # early stopping on mIoU
   weight_decay: 0.0004
   betas: [0.9, 0.999]
   num_reconstructions: 4
