@@ -5,6 +5,7 @@ import torch
 import PIL.Image as Image
 import matplotlib.pyplot as plt
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
+from typing import Tuple
 
 # ---- Your classes & colors ----
 COLOR_MAP_dense = {
@@ -43,7 +44,7 @@ def hann2d(side: int, eps: float = 1e-6) -> np.ndarray:
     w = (w - w.min()) / (w.max() - w.min() + 1e-8)
     return np.clip(w, eps, 1.0)  # avoid zeros
 
-def pad_to_fit(img: np.ndarray, patch: int) -> tuple[np.ndarray, tuple[int,int]]:
+def pad_to_fit(img: np.ndarray, patch: int) -> Tuple[np.ndarray, Tuple[int,int]]:
     H, W = img.shape[:2]
     pad_h = (patch - (H % patch)) % patch
     pad_w = (patch - (W % patch)) % patch
@@ -170,9 +171,9 @@ if __name__ == "__main__":
     main()
 """
 run :
-python infer_mask2former_overlap.py \
-  --image path/to/your_big_image.png \
-  --model ./ckpt_mask2former \
+python /home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/small_scripts.py \
+  --image /home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset/SS_Dense/val/images/2012-04-26-Muenchen-Tunnel_4K0G0110.jpg \
+  --model /home/ryqc/data/experiments/segmentation/checkpoints/dlr/Mask2former/enc-swin_t_w-ade20k/Mask2former_dlr_2025-08-19_14-05-02.pth \
   --num-classes 20 \
   --patch-size 512 \
   --overlap 0.5 \
