@@ -8,7 +8,7 @@ import rasterio
 import cv2
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None, use_processor: bool = False):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None, use_processor: bool = False, is_hf_model:bool = True):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -20,6 +20,7 @@ class SatelliteDataset(Dataset):
         self.is_test = is_test
         self.allowed_labels = allowed_labels
         self.use_processor = use_processor
+        self.is_hf_model = is_hf_model
 
     def __len__(self):
         return len(self.images)
@@ -100,9 +101,15 @@ class SatelliteDataset(Dataset):
 
         # 6) transforming / tensorize
         if self.transform:
-            transformed = self.transform(image=image, mask=mask)
-            image = transformed["image"]
-            mask = transformed["mask"]
+            if self.is_hf_model:
+                transformed = self.transform(image=image, mask=mask)
+                image = transformed["image"]
+                mask = transformed["mask"]
+            else:
+                transformed = self.transform(image=image, mask=mask)
+                image = transformed["image"]
+                mask = transformed["mask"].long()
+
         else:# TODO: check both woth transformation and without how things will work
             if self.use_processor:
                 return image, mask
