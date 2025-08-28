@@ -90,7 +90,7 @@ def load_folder(image_dir, mask_dir=None, patchify_enabled:bool=True):
             mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
 
             unique_classes = np.unique(mask)
-            print(f"{os.path.basename(mask_path)} → Classes present: {unique_classes}")
+            #print(f"{os.path.basename(mask_path)} → Classes present: {unique_classes}")
 
             if patchify_enabled:
                 image_p, _ = patchify_image_or_masks(img, patch_size, overlap)
@@ -146,24 +146,25 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         return relabeled
 
     if model_name == "Mask2former":
-        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn)
-        val_dataset = SatelliteDataset(X_val, y_val, relabel_fn=relabel_fn)
-        test_dataset = SatelliteDataset(X_test, masks=None)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn, is_hf_model=True)
+        val_dataset = SatelliteDataset(X_val, y_val, relabel_fn=relabel_fn, is_hf_model=True)
+        test_dataset = SatelliteDataset(X_test, masks=None, is_hf_model=True)
 
-    elif model_name == "segformer":
+
+    elif model_name.lower() in ["segformer", "upernet"]:
         train_dataset = SatelliteDataset(
-            X_train, y_train, transform=sg_train_tf, relabel_fn=relabel_fn
+            X_train, y_train, transform=sg_train_tf, relabel_fn=relabel_fn, is_hf_model=True
         )
         val_dataset = SatelliteDataset(
-            X_val, y_val, transform=sg_val_tf, relabel_fn=relabel_fn
+            X_val, y_val, transform=sg_val_tf, relabel_fn=relabel_fn, is_hf_model=True
         )
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=sg_val_tf)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=sg_val_tf, is_hf_model=True)
 
 
     else:
-        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn, use_processor=False)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=m2f_val_tf, relabel_fn=relabel_fn)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=m2f_val_tf, is_test=True)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn_ignore, use_processor=False, is_hf_model=False)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn_ignore, is_hf_model=False)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True, is_hf_model=False)
 
     """num_classes = 20  # or whatever you set in the model
     for i, (_, mask) in enumerate(train_dataset):
@@ -175,3 +176,18 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
     return train_dataset, val_dataset, test_dataset
 
 
+def relabel_fn_ignore(mask):
+    """
+    Remaps original class labels 1–20 into contiguous 0–15 labels,
+    ignoring classes 3, 5, 13, and 16 (set to 255).
+    """
+    to_ignore = {3, 5, 13, 16}
+    valid_classes = [i for i in range(1, 21) if i not in to_ignore]  # [1,2,4,6,...,20]
+    mapping = {orig: new_id for new_id, orig in enumerate(valid_classes)}
+
+    relabeled = np.full_like(mask, 255, dtype=np.int64)  # Default = ignore
+
+    for orig, new in mapping.items():
+        relabeled[mask == orig] = new
+
+    return relabeled
