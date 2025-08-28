@@ -194,9 +194,6 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
                     outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False
                 )
             loss = criterion(outputs, masks)
-        with torch.no_grad():
-            preds = outputs.logits.argmax(dim=1)  # shape: (B, H, W)
-            #print("Unique preds:", torch.unique(preds))
         loss.backward()
         optimizer.step()
 
@@ -270,7 +267,6 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
     for i in range(10):
         _, masks = next(iter(train_loader))
         print("Mask unique:", masks.unique())"""
-
     name = model_name.lower()
     hf_ckpt = {
         "mask2former": cfg.model.hf.checkpoint.mask2former,
@@ -385,7 +381,7 @@ def main():
             val_csv_path= cfg.data.flair.val_csv,
             base_dir=cfg.data.flair.base_dir)
     else:  # fallback to DLR dataset
-         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(cfg.data.dlr.root_dir, dataset_type="SS_Dense", model_name="Deeplabv3+")
+         train_dataset,val_dataset, test_dataset = dlr_preprocessing.load_data_dlr(cfg.data.dlr.root_dir, dataset_type="SS_Dense", model_name=cfg.model.name)
 
     if dataset_name.lower() == "flair":
         RARE_CLASS_IDS = cfg.data.flair.rare_class_ids
