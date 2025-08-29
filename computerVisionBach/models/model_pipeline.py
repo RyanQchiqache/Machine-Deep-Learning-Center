@@ -150,28 +150,19 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
                                      segmentation_maps=list(masks),
                                      return_tensors="pt")
 
-            debug_img = images[0]  # RGB, uint8
+            """debug_img = images[0]  # RGB, uint8
             debug_batch = processor(images=[debug_img], return_tensors="pt")
             pixel_values = debug_batch["pixel_values"]
             print("[Mask2Former] pixel_values stats:")
             print("dtype:", pixel_values.dtype)  # torch.float32
             print("shape:", pixel_values.shape)  # (1, 3, H, W)
-            print("range:", pixel_values.min().item(), pixel_values.max().item())  # expected range depends on normalization
+            print("range:", pixel_values.min().item(), pixel_values.max().item()) """ # expected range depends on normalization
 
             batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor)
                                 else [t.to(device) for t in v])
                             for k, v in batch_inputs.items()}
             outputs = model(**batch_inputs)
             loss = outputs.loss
-            # For quick debug preds (resize logits to GT size just in case)
-            with torch.no_grad():
-                logits = outputs.logits  # (B, C, h, w)
-                if logits.shape[-2:] != masks.shape[-2:]:
-                    logits = torch.nn.functional.interpolate(
-                        logits, size=masks.shape[-2:], mode="bilinear", align_corners=False
-                    )
-                preds = logits.argmax(dim=1)
-                # print("Unique preds:", torch.unique(preds))  # optional
 
             # Get per-pixel predictions for debugging using postprocessing
             with torch.no_grad():
@@ -340,7 +331,7 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
         epoch="final",
         miou=best_miou
     )
-    torch.save(model.state_dict(), ckpt_path)
+    ckpt_path = utils.save_checkpoint(model, processor, cfg, best_miou)
     logger.info(f" Model saved to {ckpt_path}")
 
     eval_processor = processor
