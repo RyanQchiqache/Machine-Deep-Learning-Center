@@ -145,7 +145,7 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         relabeled[valid] = mask[valid] - 1  # remap 1–20 → 0–19
         return relabeled
 
-    if model_name == "Mask2former":
+    if model_name.lower() == "mask2former":
         train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn, is_hf_model=True)
         val_dataset = SatelliteDataset(X_val, y_val, relabel_fn=relabel_fn, is_hf_model=True)
         test_dataset = SatelliteDataset(X_test, masks=None, is_hf_model=True)
