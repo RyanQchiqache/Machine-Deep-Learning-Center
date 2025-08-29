@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 from pathlib import Path
 config_file = Path(__file__).resolve().parent / "config" / "config.yaml"
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
-
+from loguru import logger
 import os, re
 from datetime import datetime
 
@@ -308,3 +308,56 @@ def load_data(root_dir, test_size, seed):
     test_dataset = SatelliteDataset(X_test, y_test)
 
     return train_dataset, test_dataset"""
+
+import os, json
+
+def is_hf_semseg_model(model: torch.nn.Module) -> bool:
+    """True for HF semseg models (SegFormer / UPerNet / Mask2Former)."""
+    mtype = getattr(getattr(model, "config", None), "model_type", "")
+    return str(mtype).lower() in {"segformer", "upernet", "mask2former"}
+
+def save_checkpoint(model, processor, cfg, best_miou: float) -> str:
+    """
+    SMP → save *.pth (state_dict) and return that filepath.
+    HF  → save a `save_pretrained` directory (model+processor) and return that dir path.
+    """
+    base = build_checkpoint_path(
+        cfg,
+        model_name=cfg.model.name,
+        encoder_name=cfg.model.smp.encoder_name,
+        encoder_weights=cfg.model.smp.encoder_weights,
+        dataset_name=cfg.project.dataset,
+        epoch="final",
+        miou=best_miou,
+    )
+
+    # HF branch: save a directory
+    if is_hf_semseg_model(model):
+        if base.endswith(".pth"):
+            base = base[:-4]
+        out_dir = base + "_hf"
+        os.makedirs(out_dir, exist_ok=True)
+
+        model.save_pretrained(out_dir)
+        if processor is not None:
+            try:
+                processor.save_pretrained(out_dir)
+            except Exception:
+                pass
+
+        meta = {
+            "model_type": str(getattr(getattr(model, "config", None), "model_type", "")),
+            "num_labels": int(getattr(getattr(model, "config", None), "num_labels", 0) or 0),
+            "ignore_index": int(getattr(getattr(model, "config", None), "ignore_index", 255) or 255),
+            "best_miou": float(best_miou),
+        }
+        with open(os.path.join(out_dir, "training_meta.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+
+        logger.info(f" Saved HF model to {out_dir}")
+        return out_dir
+
+    # SMP branch: save .pth
+    torch.save(model.state_dict(), base)
+    logger.info(f" Saved SMP weights to {base}")
+    return base
