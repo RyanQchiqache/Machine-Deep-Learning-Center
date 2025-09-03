@@ -68,8 +68,7 @@ MODEL_CHECKPOINTS: Dict[str, str] = {
     "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth",
     "upernet": "",
     "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
-    "segformer": "",        # empty -> use HF default
-    "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/dlr/old_tf_models_checkpoints/mask2former/enc-TEST_w-SWIN/mask2former_dlr_2025-08-29_12-18-09_hf",
+    "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/mask2former/enc-Swin_AKD20k_w-70_12_flair/mask2former_flair_2025-09-02_14-10-47_hf",# "#/home/ryqc/data/experiments/segmentation/checkpoints/dlr/mask2former/enc-Swin_AKD20k_w-70_12/mask2former_dlr_2025-08-29_15-07-04_hf",
 }
 
 # =============================
@@ -145,17 +144,21 @@ FLAIR_NAMES_19 = [
     "mixed", "ligneous", "greenhouse", "other"
 ]
 FLAIR_HEX_19 = {i: rgb_to_hex(rgb) for i, rgb in FlairDataset.COLOR_MAP.items()}
-FLAIR_HEX_13 = {i: FLAIR_HEX_19[i + 1] for i in range(13)}
-FLAIR_NAMES_13 = {i: FLAIR_NAMES_19[i + 1] for i in range(13)}
+
+FLAIR_NAMES_13 = {i: FLAIR_NAMES_19[i] for i in range(13)}
+FLAIR_NAMES_12 = {i: FLAIR_NAMES_19[i] for i in range(12)}
+
+FLAIR_HEX_13 = {i: FLAIR_HEX_19[i] for i in range(13)}
+FLAIR_HEX_12 = {i: FLAIR_HEX_19[i] for i in range(12)}
+
 
 def get_legend_items(dataset: str, num_classes: int):
     if dataset == "DLR":
         return [(name, hex_color) for name, hex_color in DLR_LEGEND.values()]
-    if dataset == "FLAIR" and num_classes == 19:
-        return [(FLAIR_NAMES_19[i], FLAIR_HEX_19[i]) for i in range(19)]
-    if dataset == "FLAIR" and num_classes == 13:
-        return [(FLAIR_NAMES_13[i], FLAIR_HEX_13[i]) for i in range(13)]
+    if dataset == "FLAIR" and num_classes in (12, 13, 19):
+        return [(FLAIR_NAMES_19[i], FLAIR_HEX_19[i]) for i in range(num_classes)]
     return [(f"class {i}", f"#{(i*37)%255:02x}{(i*91)%255:02x}{(i*53)%255:02x}") for i in range(num_classes)]
+
 
 def render_legend(dataset: str, num_classes: int, cols=4):
     items = get_legend_items(dataset, num_classes)
@@ -176,14 +179,13 @@ def render_legend(dataset: str, num_classes: int, cols=4):
 def get_colormap(dataset: str, num_classes: int):
     if dataset == "DLR":
         return {k: utils.hex_to_rgb(v[1]) for k, v in utils.COLOR_MAP_dense.items()}
-    if dataset == "FLAIR":
-        if num_classes == 19:
-            return {k: v for k, v in FlairDataset.COLOR_MAP.items()}
-        if num_classes == 13:
-            return {i: FlairDataset.COLOR_MAP[i + 1] for i in range(13)}
-    # fallback colors if needed
+    if dataset == "FLAIR" and num_classes in (12, 13, 19):
+        return {i: FlairDataset.COLOR_MAP[i] for i in range(num_classes)}
+    # fallback
     base = {k: v for k, v in FlairDataset.COLOR_MAP.items()}
     return {i: base.get(i, (int((i*37)%255), int((i*91)%255), int((i*53)%255))) for i in range(num_classes)}
+
+
 
 # =============================
 # Patch-wise inference (uses predict_patch from uni_infer)
@@ -248,7 +250,7 @@ with st.sidebar:
     if dataset == "DLR":
         num_classes_ui = st.number_input("Num classes", min_value=1, max_value=255, value=20, step=1)
     else:  # FLAIR
-        num_classes_ui = st.selectbox("Num classes", options=[13, 19], index=0)
+        num_classes_ui = st.selectbox("Num classes", options=[12, 13, 19], index=0)
 
     # (Re)load model if any key setting changed
     key_tuple = (model_choice, dataset, int(num_classes_ui), encoder_name, int(in_channels_ui))
@@ -260,9 +262,10 @@ with st.sidebar:
                 f"Ignoring checkpoint file for {model_choice}: needs a directory or hub id; using default weights.")
             ckpt = None
 
-        class_names = FLAIR_NAMES_19 if (dataset == "FLAIR" and num_classes_ui == 19) else (
-            [FLAIR_NAMES_13[i] for i in range(13)] if (dataset == "FLAIR" and num_classes_ui == 13) else
-            [name for name, _hex in get_legend_items(dataset, int(num_classes_ui))]
+        class_names = (
+            FLAIR_NAMES_19[:int(num_classes_ui)]
+            if (dataset == "FLAIR" and int(num_classes_ui) in (12, 13, 19))
+            else [name for name, _hex in get_legend_items(dataset, int(num_classes_ui))]
         )
 
         bundle = load_model(
