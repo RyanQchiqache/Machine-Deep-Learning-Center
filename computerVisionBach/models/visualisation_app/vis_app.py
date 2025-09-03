@@ -56,7 +56,6 @@ MODELS = [
     "deeplabv3+",    # SMP + ResNet
     "unet",          # SMP + ResNet
     "unet_resnet",   # generic Unet+ResNet (customizable)
-    "segformer",     # HF
     "upernet",       # HF
     "mask2former",   # HF
 ]
@@ -257,7 +256,7 @@ with st.sidebar:
     if "_loaded_key" not in st.session_state or st.session_state._loaded_key != key_tuple:
         free_cuda()
         ckpt = MODEL_CHECKPOINTS.get(model_choice, "") or None
-        if ckpt and os.path.isfile(ckpt) and model_choice in {"segformer", "upernet", "mask2former"}:
+        if ckpt and os.path.isfile(ckpt) and model_choice in {"upernet", "mask2former"}:
             st.warning(
                 f"Ignoring checkpoint file for {model_choice}: needs a directory or hub id; using default weights.")
             ckpt = None
