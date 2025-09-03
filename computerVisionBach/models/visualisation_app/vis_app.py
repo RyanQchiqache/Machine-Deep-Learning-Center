@@ -60,15 +60,23 @@ MODELS = [
     "mask2former",   # HF
 ]
 
-# Model checkpoints (adjust paths)
-# NOTE: keys must match entries in MODELS (lowercase)
-MODEL_CHECKPOINTS: Dict[str, str] = {
-    "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
-    "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_101.pth",
-    "upernet": "",
-    "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
-    "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/mask2former/enc-Swin_AKD20k_w-70_12_flair/mask2former_flair_2025-09-02_14-10-47_hf",# "#/home/ryqc/data/experiments/segmentation/checkpoints/dlr/mask2former/enc-Swin_AKD20k_w-70_12/mask2former_dlr_2025-08-29_15-07-04_hf",
+MODEL_CHECKPOINTS: Dict[str, Dict[str, str]] = {
+    "DLR": {
+        "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
+        "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth",
+        "upernet": "",
+        "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_resnet50.pth",
+        "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/dlr/mask2former/enc-Swin_AKD20k_w-70_12/mask2former_dlr_2025-08-29_15-07-04_hf",
+    },
+    "FLAIR": {
+        "unet": "",
+        "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_flair_deeplabv3+.pth",
+        "upernet": "",
+        "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
+        "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/mask2former/enc-Swin_AKD20k_w-70_12_flair/mask2former_flair_2025-09-02_14-10-47_hf",
+    },
 }
+
 
 # =============================
 # Small utilities
@@ -219,6 +227,27 @@ def predict_random_crop(np_img: np.ndarray, crop: int):
     pred = predict_patch(crop_img, st.session_state.bundle, device=device)
     return crop_img, pred
 
+def resolve_checkpoint(dataset: str, model_choice: str) -> Optional[str]:
+    ckpt = MODEL_CHECKPOINTS.get(dataset, {}).get(model_choice, "") or None
+    if not ckpt:
+        return None
+
+    is_hf = model_choice in {"segformer", "upernet", "mask2former"}
+    looks_like_path = ckpt.startswith("/") or ckpt.startswith("./") or ckpt.startswith("../")
+
+    if is_hf:
+        # HF: accept dir OR hub id. If it looks like a path, require a dir.
+        if looks_like_path and not os.path.isdir(ckpt):
+            st.warning(f"Checkpoint for {model_choice} should be a directory or a hub id; using default weights.")
+            return None
+        return ckpt
+    else:
+        # SMP: must be a file path
+        if not os.path.isfile(ckpt):
+            st.warning(f"Checkpoint file not found for {model_choice}; using default weights.")
+            return None
+        return ckpt
+
 # =============================
 # UI
 # =============================
@@ -255,11 +284,7 @@ with st.sidebar:
     key_tuple = (model_choice, dataset, int(num_classes_ui), encoder_name, int(in_channels_ui))
     if "_loaded_key" not in st.session_state or st.session_state._loaded_key != key_tuple:
         free_cuda()
-        ckpt = MODEL_CHECKPOINTS.get(model_choice, "") or None
-        if ckpt and os.path.isfile(ckpt) and model_choice in {"upernet", "mask2former"}:
-            st.warning(
-                f"Ignoring checkpoint file for {model_choice}: needs a directory or hub id; using default weights.")
-            ckpt = None
+        ckpt = resolve_checkpoint(dataset, model_choice)
 
         class_names = (
             FLAIR_NAMES_19[:int(num_classes_ui)]
@@ -287,8 +312,8 @@ with st.sidebar:
     render_legend(dataset, int(st.session_state.get("num_classes", num_classes_ui)))
 
 # File uploader
-uploaded = st.file_uploader("📤 Upload an aerial/urban image (JPG/PNG/TIF/TIFF)",
-                            type=["jpg", "jpeg", "png", "tif", "tiff"])
+uploaded = st.file_uploader(" Upload an aerial/urban image (JPG/PNG/TIF/TIFF)", type=["jpg", "jpeg", "png", "tif", "tiff"])
+
 if not uploaded:
     st.stop()
 
