@@ -1,17 +1,20 @@
 import os
+import csv
 import sys
 import numpy as np
+import albumentations as A
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from typing import Tuple, List, Optional
-import csv
-from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
-from transformers import SegformerImageProcessor
-import torch
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
+from omegaconf import OmegaConf
+from typing import Tuple, List, Optional
+from albumentations.pytorch import ToTensorV2
+from transformers import SegformerImageProcessor
+from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
 
 smp_trans = A.Compose([
 A.HorizontalFlip(p=0.5),
@@ -75,11 +78,10 @@ def prepare_datasets_from_csvs(
         relabeled = np.full_like(mask, 255, dtype=np.uint8)  # 255 = ignore index
         for i in range(1, 13):  # FLAIR class IDs 1–12
             relabeled[mask == i] = i - 1  # Remap to 0–11
-            print(np.unique(relabeled))
         return relabeled
 
-    train_dataset = FlairDataset(train_imgs, train_masks, transform=smp_trans, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=False, is_hf_model=False)
-    val_dataset = FlairDataset(val_imgs, val_masks,transform=smp_trans_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=False, is_hf_model=False)
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=smp_trans, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=cfg.data.flair.use_processor, is_hf_model=cfg.data.flair.is_hf_model)
+    val_dataset = FlairDataset(val_imgs, val_masks,transform=smp_trans_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=cfg.data.flair.use_processor, is_hf_model=cfg.data.flair.is_hf_model)
 
     if test_csv_path is not None:
         test_pairs = load_csv(test_csv_path)

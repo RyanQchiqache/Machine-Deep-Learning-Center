@@ -2,16 +2,17 @@ import os
 import cv2
 import sys
 import numpy as np
-import torch
+import albumentations as A
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
-from computerVisionBach.models.Unet_SS import visualisation
-from transformers import SegformerImageProcessor
-from torchvision import transforms as T
-from computerVisionBach.models.Unet_SS import utils
-import albumentations as A
+from omegaconf import OmegaConf
 from albumentations.pytorch import ToTensorV2
+from transformers import SegformerImageProcessor
+from computerVisionBach.models.Unet_SS import utils
+from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
 
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 patch_size, overlap = 512, 0.5
@@ -162,9 +163,9 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
 
 
     else:
-        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn_ignore, use_processor=False, is_hf_model=False)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn_ignore, is_hf_model=False)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True, is_hf_model=False)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn_ignore, use_processor=cfg.data.dlr.use_processor, is_hf_model=cfg.data.dlr.is_hf_model)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn_ignore, is_hf_model=cfg.data.dlr.is_hf_model)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True, is_hf_model=cfg.data.dlr.is_hf_model)
 
     """num_classes = 20  # or whatever you set in the model
     for i, (_, mask) in enumerate(train_dataset):
