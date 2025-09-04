@@ -1,21 +1,21 @@
 project:
   name: "computerVisionBach-segmentation"
-  dataset: "flair"     # one of: ["flair", "dlr"]
+  dataset: "dlr"     # one of: ["flair", "dlr"]
   description: "Default config for segmentation training"
   version: 1.0
 
 model:
-  name: "UNet"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
-  num_classes: 12
+  name: "DeepLabV3+"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
+  num_classes: 20
   ignore_class_index: 255
   patch_size: 512
   overlap: 0.5
   patchify_enabled: true
   smp:
-    encoder_name: "resnet50"
-    encoder_weights: "imagenet"
+    encoder_name: "nvidia_seg"
+    encoder_weights: "trying_to_relabel"
     in_channels: 3
-    encoder_output_stride: 8
+    encoder_output_stride: 16
 
   hf:
     checkpoint:
