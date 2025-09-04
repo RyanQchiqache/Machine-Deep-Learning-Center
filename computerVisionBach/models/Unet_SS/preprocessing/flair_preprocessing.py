@@ -12,15 +12,21 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
-tf_train = A.Compose([
-    A.HorizontalFlip(p=0.5),
+
+smp_trans = A.Compose([
+A.HorizontalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
     A.VerticalFlip(p=0.5),
     A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
+tf_train = A.Compose([
+A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.VerticalFlip(p=0.5),
+])
 
-tf_val = A.Compose([
+smp_trans_val = A.Compose([
     A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
@@ -53,7 +59,8 @@ def prepare_datasets_from_csvs(
 
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
-
+    #test_images, test_masks = train_imgs[:40], train_masks[:40]
+    #t_val_images, t_val_masks = val_imgs[:40], val_masks[:40]
     def relabel_fn(mask):
         relabeled = np.full_like(mask, 255, dtype=np.int64)
         valid = (mask >= 1) & (mask <= 19)
@@ -67,17 +74,18 @@ def prepare_datasets_from_csvs(
         """
         relabeled = np.full_like(mask, 255, dtype=np.uint8)  # 255 = ignore index
         for i in range(1, 13):  # FLAIR class IDs 1–12
-            relabeled[mask == i] = i - 1  # Remap to 0–12
+            relabeled[mask == i] = i - 1  # Remap to 0–11
+            print(np.unique(relabeled))
         return relabeled
 
-    train_dataset = FlairDataset(train_imgs, train_masks, transform=tf_train, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)))
-    val_dataset = FlairDataset(val_imgs, val_masks,transform=tf_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)))
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=smp_trans, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=False, is_hf_model=False)
+    val_dataset = FlairDataset(val_imgs, val_masks,transform=smp_trans_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=False, is_hf_model=False)
 
     if test_csv_path is not None:
         test_pairs = load_csv(test_csv_path)
         test_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in test_pairs]
         test_imgs, test_masks = zip(*test_pairs)
-        test_dataset = FlairDataset(test_imgs, test_masks, transform=tf_val)
+        test_dataset = FlairDataset(test_imgs, test_masks, transform=None)
 
     else:
         test_dataset = None
