@@ -1,19 +1,19 @@
 project:
   name: "computerVisionBach-segmentation"
-  dataset: "dlr"     # one of: ["flair", "dlr"]
+  dataset: "flair"     # one of: ["flair", "dlr"]
   description: "Default config for segmentation training"
   version: 1.0
 
 model:
-  name: "UPerNet"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
-  num_classes: 20
+  name: "UNet"             # e.g., "unet_resnet101", "DeepLabV3+", "SegFormer", "Mask2Former", "UPerNet", "FPN", "UnetPP", "UNet"
+  num_classes: 12
   ignore_class_index: 255
   patch_size: 512
   overlap: 0.5
   patchify_enabled: true
   smp:
-    encoder_name: "nvidia_seg"
-    encoder_weights: "trying_to_relabel"
+    encoder_name: "resnet50"
+    encoder_weights: "imagenet"
     in_channels: 3
     encoder_output_stride: 8
 
@@ -30,7 +30,7 @@ model:
 training:
   batch_size: 8
   num_epochs: 70
-  learning_rate: 0.0004
+  learning_rate: 1e-3 # Unet/resnet and deeplabv3+ [3e-4 - 1e-3], Mask2former/Upernet [6e-5 – 1e-4]
   random_seed: 42
   patience: 12           # early stopping on mIoU
   weight_decay: 0.0004
@@ -42,8 +42,8 @@ training:
     patience: 5
     factor: 0.5
     verbose: true
-    warmup_epochs: 1      # linear warmup duration (epochs)
-    max_epochs: 70        # total epochs (same as training.epochs)
+    warmup_epochs: 2    # linear warmup duration (epochs) Unet/resnet and deeplabv3+ [1-2], Mask2former/Upernet [4]
+    max_epochs: 60        # total epochs (same as training.epochs)
     eta_min: 0.0          # final LR at the end of cosine
     warmup_start_factor: 0.1  # start at 10% of base LR (optional)
   optimizer:
@@ -55,6 +55,9 @@ data:
   dlr:
     root_dir: "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/DLR_dataset"
     rare_class_ids: []
+    use_processor: false
+    is_hf_model: false
+
 
   # FLAIR Dataset
   flair:
@@ -62,8 +65,10 @@ data:
     train_csv: "/home/ryqc/data/flair_dataset/cleaned-train01.csv"
     val_csv:   "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
     test_csv:  "/home/ryqc/data/flair_dataset/cleaned-test01.csv"
-    used_labels: [1, 2, 3, 6, 7, 8, 10, 11, 13, 18]
-    rare_class_ids: [1, 3, 5, 7, 11, 12]
+    used_labels: ...
+    rare_class_ids: ...
+    use_processor: false
+    is_hf_model: false
 
 pretrained_processors:
   segformer: "nvidia/segformer-b2-finetuned-ade-512-512"
