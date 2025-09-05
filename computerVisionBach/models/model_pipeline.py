@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR, SequentialLR, LinearLR
 torch.backends.cudnn.enabled = False
@@ -34,13 +35,17 @@ from computerVisionBach.models.Unet_SS.preprocessing.flair_preprocessing import 
 from computerVisionBach.models.Unet_SS.preprocessing import dlr_preprocessing
 from computerVisionBach.models.evaluation import evaluate
 from computerVisionBach.models.models_factory import build_model
-print(smp.encoders.get_encoder_names())
+print(f"Encoders available in smp: {smp.encoders.get_encoder_names()}")
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
 IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
+
+
+scaler = GradScaler()
+
 def get_loss_and_optimizer(model):
     dice_loss = DiceLoss(mode='multiclass')
     ce_loss = nn.CrossEntropyLoss(ignore_index=cfg.model.ignore_class_index)
@@ -87,24 +92,9 @@ def get_loss_and_optimizer(model):
             mode=cfg.training.scheduler.mode,
             patience=cfg.training.scheduler.patience,
             factor=cfg.training.scheduler.factor,
-            verbose=cfg.training.scheduler.verbose
         )
 
     return criterion, scheduler, optimizer
-
-
-"""def get_loss_and_optimizer(model):
-    dice_loss = DiceLoss(mode='multiclass')
-    ce_loss = nn.CrossEntropyLoss(ignore_index=cfg.model.ignore_class_index)
-    #criterion = lambda pred, target: 0.5 * ce_loss(pred, target) + 0.5 * dice_loss(pred, target)
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate, weight_decay=cfg.training.weight_decay, betas=cfg.training.betas)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                           mode=cfg.training.scheduler.mode,
-                                                           patience=cfg.training.scheduler.patience,
-                                                           factor=cfg.training.scheduler.factor,
-                                                           verbose=cfg.training.scheduler.verbose
-    )
-    return ce_loss, scheduler, optimizer"""
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=None):
@@ -120,73 +110,59 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, processor=N
 
         optimizer.zero_grad()
 
-        if is_hf_semseg:
-            """imgs = [img if isinstance(img, np.ndarray) else img.cpu().permute(1, 2, 0).numpy() for img in images]
-            segs = [m.astype(np.int64) for m in masks]"""
-
-            batch = processor(
-                images=images,
-                segmentation_maps=masks,
-                return_tensors="pt"
-            )
-            pixel_values = batch["pixel_values"].to(device)  # (B,3,H,W)
-            labels_t = batch["labels"].to(device).long()  # (B,H,W)
-
-            debug_img = images[0]
-            debug_batch = processor(images=[debug_img], return_tensors="pt")
-            debug_pixel_values = debug_batch["pixel_values"]
-
-            """print("Post-processor tensor stats:")
-            print("dtype:", debug_pixel_values.dtype)  # torch.float32
-            print("shape:", debug_pixel_values.shape)  # (1, 3, 512, 512)
-            print("range:", debug_pixel_values.min().item(), debug_pixel_values.max().item())  # should be ~[-2, +2]"""
-
-            outputs = model(pixel_values=pixel_values, labels=labels_t)
-            loss = outputs.loss
-
-        elif is_mask2former:
-            #TODO : Try to see if we can make mask2former work without normalisaing and then not normalising "double work"
-            batch_inputs = processor(images=list(images),
-                                     segmentation_maps=list(masks),
-                                     return_tensors="pt")
-
-            """debug_img = images[0]  # RGB, uint8
-            debug_batch = processor(images=[debug_img], return_tensors="pt")
-            pixel_values = debug_batch["pixel_values"]
-            print("[Mask2Former] pixel_values stats:")
-            print("dtype:", pixel_values.dtype)  # torch.float32
-            print("shape:", pixel_values.shape)  # (1, 3, H, W)
-            print("range:", pixel_values.min().item(), pixel_values.max().item()) """ # expected range depends on normalization
-
-            batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor)
-                                else [t.to(device) for t in v])
-                            for k, v in batch_inputs.items()}
-            outputs = model(**batch_inputs)
-            loss = outputs.loss
-
-            # Get per-pixel predictions for debugging using postprocessing
-            with torch.no_grad():
-                H, W = masks.shape[-2], masks.shape[-1]
-                pp = processor.post_process_semantic_segmentation(
-                    outputs=outputs,
-                    target_sizes=[(H, W)] * masks.shape[0]
-                )  # list of (H, W) tensors
-                preds = torch.stack(pp, dim=0)  # (B, H, W)
-                # print("Unique preds:", torch.unique(preds))  # optional
-
-            """loss = getattr(outputs, "loss", None)"""
-            if loss is None:
-                logger.warning("outputs.loss is None. Skipping this batch.")
-                continue
-        else:
-            outputs = model(images)
-            if outputs.shape[-2:] != masks.shape[-2:]:
-                outputs = torch.nn.functional.interpolate(
-                    outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False
+        with autocast():
+            if is_hf_semseg:
+                batch = processor(
+                    images=images,
+                    segmentation_maps=masks,
+                    return_tensors="pt"
                 )
-            loss = criterion(outputs, masks)
-        loss.backward()
-        optimizer.step()
+                pixel_values = batch["pixel_values"].to(device)  # (B,3,H,W)
+                labels_t = batch["labels"].to(device).long()  # (B,H,W)
+
+                # utils.info_images_before_training(images, batch)
+
+                outputs = model(pixel_values=pixel_values, labels=labels_t)
+                loss = outputs.loss
+
+            elif is_mask2former:
+                batch_inputs = processor(images=list(images),
+                                         segmentation_maps=list(masks),
+                                         return_tensors="pt")
+
+                # utils.info_images_before_training(images, processor)
+
+                batch_inputs = {k: (v.to(device) if isinstance(v, torch.Tensor)
+                                    else [t.to(device) for t in v])
+                                for k, v in batch_inputs.items()}
+                outputs = model(**batch_inputs)
+                loss = outputs.loss
+
+                # Get per-pixel predictions for debugging using postprocessing
+                with torch.no_grad():
+                    H, W = masks.shape[-2], masks.shape[-1]
+                    pp = processor.post_process_semantic_segmentation(
+                        outputs=outputs,
+                        target_sizes=[(H, W)] * masks.shape[0]
+                    )  # list of (H, W) tensors
+                    preds = torch.stack(pp, dim=0)  # (B, H, W)
+                    # print("Unique preds:", torch.unique(preds))  # optional
+
+                """loss = getattr(outputs, "loss", None)"""
+                if loss is None:
+                    logger.warning("outputs.loss is None. Skipping this batch.")
+                    continue
+            else:
+                outputs = model(images)
+                if outputs.shape[-2:] != masks.shape[-2:]:
+                    outputs = torch.nn.functional.interpolate(
+                        outputs, size=masks.shape[-2:], mode="bilinear", align_corners=False
+                    )
+                loss = criterion(outputs, masks)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         running_loss += loss.item()
 
@@ -239,7 +215,8 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
                 break
     except KeyboardInterrupt:
         logger.info("Interrupted, saving best weights so far...")
-        torch.save(best_model_wts, "best_model_interrupt.pth")
+        ckpt_path = utils.save_checkpoint(model, processor, cfg, best_miou)
+        logger.info(f" Model saved to {ckpt_path}")
         raise
 
     model.load_state_dict(best_model_wts)
@@ -247,7 +224,11 @@ def train(model, train_loader, val_loader, criterion, optimizer, scheduler, devi
 
 
 def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, device, writer=None, rare_class_ids=None, processor=None):
-    logger.info(f"\nTraining model: {model_name}")
+    logger.info(
+        f"\nTraining model: {model_name} "
+        f"(encoder={cfg.model.smp.encoder_name}, weights={cfg.model.smp.encoder_weights}, "
+        f"num_classes={cfg.model.num_classes}, dataset={cfg.project.dataset})"
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=cfg.training.batch_size, shuffle=False, num_workers=2, pin_memory=True)
