@@ -1,11 +1,10 @@
-import os
-import torch
-from torch.utils.data import Dataset
-from typing import Optional, Callable, Tuple
-import numpy as np
-import PIL.Image as I
-import rasterio
 import cv2
+import torch
+import rasterio
+import numpy as np
+
+from torch.utils.data import Dataset
+from typing import Optional, Tuple
 
 class SatelliteDataset(Dataset):
     def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None, use_processor: bool = False, is_hf_model:bool = True):
@@ -110,7 +109,7 @@ class SatelliteDataset(Dataset):
                 image = transformed["image"]
                 mask = transformed["mask"].long()
 
-        else:# TODO: check both woth transformation and without how things will work
+        else:
             if self.use_processor:
                 return image, mask
             else:
