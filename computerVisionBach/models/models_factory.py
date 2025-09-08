@@ -10,7 +10,7 @@ from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from transformers import AutoImageProcessor
-cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+cfg = OmegaConf.load("/home/ryqc/projects/PycharmProjects/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 
 # ---- optional: central defaults
@@ -32,10 +32,10 @@ def _ensure_label_maps(num_classes, class_names=None):
 
 def _build_mask2former(num_classes, device, class_names=None,
                        hf_name=None, ignore_index=255,
-                       reduce_labels=False, do_rescale=False, **_):
+                       reduce_labels=False, do_rescale=False, do_resize=False, **_):
     name = hf_name or "facebook/mask2former-swin-small-ade-semantic"
     processor = AutoImageProcessor.from_pretrained(
-        name, reduce_labels=reduce_labels, do_rescale=do_rescale
+        name, reduce_labels=reduce_labels, do_rescale=do_rescale, do_resize=do_resize
     )
     if class_names is None:
         class_names = [f"Class_{i}" for i in range(num_classes)]
@@ -95,10 +95,10 @@ def _build_segformer(num_classes, device, class_names=None,
 
 def _build_upernet(num_classes, device, class_names=None,
                      hf_name=None, ignore_index=255,
-                     reduce_labels=False, do_rescale=False, **_):
+                     reduce_labels=False, do_rescale=False,do_resize=False, **_):
     name = hf_name or "openmmlab/upernet-swin-small"
     processor = AutoImageProcessor.from_pretrained(
-        name, reduce_labels=reduce_labels, do_rescale=do_rescale
+        name, reduce_labels=reduce_labels, do_rescale=do_rescale, do_resize=do_resize
     )
     id2label = {i: (class_names[i] if class_names else str(i)) for i in range(num_classes)}
     label2id = {v: k for k, v in id2label.items()}
