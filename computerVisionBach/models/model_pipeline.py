@@ -5,7 +5,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-import numpy as np
 from tqdm import tqdm
 from loguru import logger
 from omegaconf import OmegaConf
@@ -37,9 +36,6 @@ from computerVisionBach.models.evaluation import evaluate
 from computerVisionBach.models.models_factory import build_model
 print(f"Encoders available in smp: {smp.encoders.get_encoder_names()}")
 
-IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 
@@ -54,7 +50,7 @@ def get_loss_and_optimizer(model):
     criterion = ce_loss  # or use the combined loss above
 
     optimizer = AdamW(
-        model.parameters(),
+        (p for p in model.parameters() if p.requires_grad),
         lr=cfg.training.learning_rate,
         weight_decay=cfg.training.weight_decay,
         betas=tuple(cfg.training.betas)
@@ -268,6 +264,10 @@ def train_and_evaluate(model_name, train_dataset, val_dataset, test_dataset, dev
         reduce_labels=cfg.model.hf.processor.reduce_labels,
         do_rescale=cfg.model.hf.processor.do_rescale,
         do_normalize=cfg.model.hf.processor.do_normalize,
+        de_resize=cfg.model.hf.processor.do_resize,
+        reinit_decoder=cfg.model.hf.options.reinit_decoder,
+        freeze_backbone=cfg.model.hf.options.freeze_backbone_stage0_1,
+
     )
 
     criterion, scheduler, optimizer = get_loss_and_optimizer(model)
