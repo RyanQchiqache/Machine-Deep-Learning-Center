@@ -1,16 +1,23 @@
 from __future__ import annotations
 import torch
 import inspect
-import pathlib
 import segmentation_models_pytorch as smp
+
+
 from functools import partial
 from omegaconf import OmegaConf
 from transformers import SegformerForSemanticSegmentation
 from transformers import UperNetForSemanticSegmentation, SegformerImageProcessor
 from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
+from transformers.models.mask2former.modeling_mask2former import (
+    Mask2FormerPixelDecoder,
+)
 from computerVisionBach.models.Unet_SS.SS_models.Unet import UNet
 from transformers import AutoImageProcessor
-cfg = OmegaConf.load("/home/ryqc/projects/PycharmProjects/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+from torch import nn
+from loguru import logger
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 
 # ---- optional: central defaults
@@ -19,6 +26,64 @@ DEFAULTS = {
     "encoder_weights": "imagenet",
     "in_channels": 3,
 }
+
+
+def freeze_backbone_stages(model) -> None:
+    """
+    Freeze Swin patch embedding (+ its norm) and the first two Swin stages (layers 0 and 1)
+    for Hugging Face Mask2Former Swin backbones.
+    """
+    prefixes = (
+        "model.pixel_level_module.encoder.embeddings",
+        "model.pixel_level_module.encoder.encoder.layers.0",
+        "model.pixel_level_module.encoder.encoder.layers.1",
+    )
+
+    logger.info("Freezing Swin patch embedding + first two stages (0, 1)...")
+    num_frozen = 0
+    for name, param in model.named_parameters():
+        if any(name.startswith(p) for p in prefixes):
+            if param.requires_grad:
+                param.requires_grad = False
+                num_frozen += 1
+                logger.debug(f"Froze: {name}")
+    logger.info(f"Freezing completed. Params frozen: {num_frozen}")
+
+
+
+def reinit_decoder(model):
+    xavier_std = model.config.init_xavier_std
+    std = model.config.init_std
+
+    decoder = model.model.pixel_level_module.decoder
+
+    logger.info("Reinitializing decoder via official Mask2Former _init_weights...")
+
+    for module in decoder.modules():
+        if isinstance(module, Mask2FormerPixelDecoder):
+            for p in module.parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p, gain=xavier_std)
+            nn.init.normal_(module.level_embed, mean=0.0, std=std)
+            logger.info(" • PixelDecoder ⟶ Xavier on params + normal on level_embed")
+
+        elif isinstance(module, (nn.Conv2d, nn.Linear, nn.BatchNorm2d)):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+            logger.info(f" • {type(module).__name__} ⟶ normal(mean=0,std={std}) + zero bias")
+
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+            logger.info(" • Embedding ⟶ normal(mean=0,std={std}), zero padding_idx")
+
+        if hasattr(module, "reference_points"):
+            nn.init.xavier_uniform_(module.reference_points.weight.data, gain=1.0)
+            nn.init.constant_(module.reference_points.bias.data, 0.0)
+            logger.info(" • reference_points ⟶ Xavier + zero bias")
+
 
 # ---- helpers for HF models so return signature is consistent
 
@@ -32,7 +97,9 @@ def _ensure_label_maps(num_classes, class_names=None):
 
 def _build_mask2former(num_classes, device, class_names=None,
                        hf_name=None, ignore_index=255,
-                       reduce_labels=False, do_rescale=False, do_resize=False, **_):
+                       reduce_labels=False, do_rescale=False, do_resize=False,
+                       reinit_decoder: bool = False, freeze_backbone: bool = True,
+                       **_):
     name = hf_name or "facebook/mask2former-swin-small-ade-semantic"
     processor = AutoImageProcessor.from_pretrained(
         name, reduce_labels=reduce_labels, do_rescale=do_rescale, do_resize=do_resize
@@ -48,27 +115,15 @@ def _build_mask2former(num_classes, device, class_names=None,
         ignore_mismatched_sizes=True,
     )
     model.config.ignore_index = ignore_index
-    return model.to(device), processor
 
-"""def _build_segformer(num_classes, device, class_names=None,
-                     hf_name=None, ignore_index=255,
-                     reduce_labels=False, do_rescale=True, **_):
-    name = hf_name or "nvidia/segformer-b2-finetuned-ade-512-512"
-    processor = AutoImageProcessor.from_pretrained(
-        name, reduce_labels=reduce_labels,
-        do_rescale=do_rescale
-    )
-    id2label, label2id = _ensure_label_maps(num_classes, class_names)
-    model = SegformerForSemanticSegmentation.from_pretrained(
-        name,
-        num_labels=num_classes,
-        id2label=id2label,
-        label2id=label2id,
-        ignore_mismatched_sizes=True,
-    )
-    model.config.ignore_index = ignore_index
-    return model.to(device), processor"""
-# TODO: check what will wor with these two functions
+    if freeze_backbone:
+        freeze_backbone_stages(model)
+        logger.success("Mask2Former Swin patch_embed + stages (0,1) frozen.")
+    if reinit_decoder:
+        reinit_decoder(model)
+        logger.success("Mask2Former pixel decoder re-initialized.")
+
+    return model.to(device), processor
 
 def _build_segformer(num_classes, device, class_names=None,
                      hf_name=None, ignore_index=255,
@@ -200,6 +255,7 @@ def build_model(
     if key not in _MODEL_REGISTRY:
         raise ValueError(f"Unknown model name: {model_name}. Available: {sorted(_MODEL_REGISTRY.keys())}")
 
+    # Base knobs (safe defaults)
     base = {
         "encoder_name": encoder_name or DEFAULTS["encoder_name"],
         "encoder_weights": encoder_weights or DEFAULTS["encoder_weights"],
@@ -207,19 +263,46 @@ def build_model(
         "ignore_index": extra.get("ignore_index", 255),
         "reduce_labels": extra.get("reduce_labels", False),
         "do_rescale": extra.get("do_rescale", False),
+        # Pass-through: any other keys in `extra` will be filtered per builder
     }
 
+    # Merge user extras last
+    base.update(extra)
+
+    # Keep only args the builder can accept
+    builder = _MODEL_REGISTRY[key]
+
     def _filtered_kwargs(fn, kwargs):
-        """
-        understand it as If the road (the builder) has an open lane (**kwargs), let all cars (keys) pass.
-        """
         sig = inspect.signature(fn)
         if any(p.kind is p.VAR_KEYWORD for p in sig.parameters.values()):
             return kwargs
         return {k: v for k, v in kwargs.items() if k in sig.parameters}
-    base.update(extra)
-    kwargs = base
 
-    builder = _MODEL_REGISTRY[key]
-    kwargs = _filtered_kwargs(builder, kwargs)
-    return builder(num_classes=num_classes, device=device, **kwargs)
+    kwargs = _filtered_kwargs(builder, base)
+
+    # --- Build exactly once
+    model, processor = builder(num_classes=num_classes, device=device, **kwargs)
+
+    # --- Verification (generic)
+    frozen = sum(1 for p in model.parameters() if not p.requires_grad)
+    trainable = sum(1 for p in model.parameters() if p.requires_grad)
+    logger.info(f"Params — frozen: {frozen}, trainable: {trainable}")
+
+    # Optional spot-checks (only for Mask2Former)
+    if key == "mask2former":
+        to_check = (
+            "model.pixel_level_module.encoder.embeddings.patch_embeddings",
+            "model.pixel_level_module.encoder.embeddings.norm",
+            "model.pixel_level_module.encoder.encoder.layers.0",
+            "model.pixel_level_module.encoder.encoder.layers.1",
+        )
+        shown = 0
+        for name, p in model.named_parameters():
+            if any(name.startswith(pref) for pref in to_check):
+                logger.debug(f"{name} requires_grad={p.requires_grad}")
+                shown += 1
+                if shown >= 20:
+                    break
+
+    # --- Return the same instance you modified
+    return model, processor
