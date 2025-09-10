@@ -28,6 +28,7 @@ from typing import Tuple, Optional, Dict
 import numpy as np
 import torch
 from PIL import Image
+from omegaconf import OmegaConf
 import rasterio
 import cv2
 import streamlit as st
@@ -41,6 +42,11 @@ from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import Fl
 from computerVisionBach.models.visualisation_app.uni_infer import (
     load_model, ModelBundle, predict_patch
 )
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
+
+download_path = cfg.paths.download
 
 # =============================
 # App Config & Globals
@@ -64,16 +70,16 @@ MODEL_CHECKPOINTS: Dict[str, Dict[str, str]] = {
     "DLR": {
         "unet": "computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model.pth",
         "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_dlr_resnet50_65epochs.pth",
-        "upernet": "",
+        "upernet": "/home/ryqc/data/experiments/segmentation/checkpoints/dlr/UPerNet/enc-Upper_swin_small_w-70_12_dlr/UPerNet_dlr_2025-09-03_19-28-14_hf",
         "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet50_model_dlr_resnet50.pth",
         "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/dlr/mask2former/enc-Swin_AKD20k_w-70_12/mask2former_dlr_2025-08-29_15-07-04_hf",
     },
     "FLAIR": {
         "unet": "",
-        "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_flair_deeplabv3+.pth",
-        "upernet": "",
-        "unet_resnet": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/unet_resnet34_model_flair_unet_resnet34.pth",
-        "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/mask2former/enc-Swin_AKD20k_w-70_12_flair/mask2former_flair_2025-09-02_14-10-47_hf",
+        "deeplabv3+": "/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/checkpoints/deeplabv3+_model_flair_deeplabv3+.pth",# 12 classes
+        "upernet": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/UPerNet/enc-swin_upernet_w-12_classes/UPerNet_flair_2025-09-09_08-52-22_hf",
+        "unet_resnet": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/UNet/enc-resnet50_w-imagenet/UNet_flair_2025-09-06_01-35-44.pth", # 12 classes
+        "mask2former": "/home/ryqc/data/experiments/segmentation/checkpoints/flair/mask2former/enc-Swin_AKD20k_w-70_12_flair/mask2former_flair_2025-09-02_14-10-47_hf",# 12 classes
     },
 }
 
@@ -347,11 +353,23 @@ if st.button("Run Segmentation"):
     c1.image(pred_rgb, caption="Predicted Mask", use_column_width=True)
     c2.image(overlay, caption="Overlay", use_column_width=True)
 
-    # Download overlay
+    # Save directory
+    download_path = cfg.paths.download
+    os.makedirs(download_path, exist_ok=True)
+
+    # Overlay
+    overlay_img = Image.fromarray(safe_to_uint8(overlay))
+    overlay_img.save(os.path.join(download_path, "segmentation_overlay.png"))
     buf = io.BytesIO()
-    Image.fromarray(safe_to_uint8(overlay)).save(buf, format="PNG")
-    st.download_button("💾 Download Overlay", buf.getvalue(),
-                       file_name="segmentation_overlay.png", mime="image/png")
+    overlay_img.save(buf, format="PNG")
+    st.download_button("💾 Download Overlay", buf.getvalue(), file_name="segmentation_overlay.png", mime="image/png")
+
+    # Prediction
+    pred_img = Image.fromarray(safe_to_uint8(pred_rgb))
+    pred_img.save(os.path.join(download_path, "segmented_image.png"))
+    buf = io.BytesIO()
+    pred_img.save(buf, format="PNG")
+    st.download_button("💾 Download Segmented Image", buf.getvalue(), file_name="segmented_image.png", mime="image/png")
 
 # =============================
 # Optional Styling
