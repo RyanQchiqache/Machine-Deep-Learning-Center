@@ -1,16 +1,17 @@
-import sys
-from collections import Counter
-import os
+import re
 import torch
-from torch.utils.data import DataLoader
 import numpy as np
-from omegaconf import OmegaConf
+
 from pathlib import Path
-config_file = Path(__file__).resolve().parent / "config" / "config.yaml"
-cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 from loguru import logger
-import os, re
 from datetime import datetime
+from collections import Counter
+from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from transformers import Mask2FormerForUniversalSegmentation, SegformerForSemanticSegmentation, UperNetForSemanticSegmentation
+
+config_file = Path(__file__).resolve().parent / "config" / "config.yaml"
+cfg = OmegaConf.load("/home/ryqc/projects/PycharmProjects/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 
 def _safe_slug(s: str) -> str:
     """Make a string filesystem-safe and concise."""
@@ -126,6 +127,17 @@ def count_class_distribution(masks):
         values, counts = np.unique(mask, return_counts=True)
         total_counts.update(dict(zip(values, counts)))
     return total_counts
+
+
+def info_images_before_training(images, processor):
+    model_name = cfg.model.name
+    debug_img = images[0]  # RGB, uint8
+    debug_batch = processor(images=[debug_img], return_tensors="pt")
+    pixel_values = debug_batch["pixel_values"]
+    print(f"[{model_name}] pixel_values stats:")
+    print("dtype:", pixel_values.dtype)  # torch.float32
+    print("shape:", pixel_values.shape)  # (1, 3, H, W)
+    print("range:", pixel_values.min().item(), pixel_values.max().item())  # expected range depends on normalization
 
 
 def create_color_to_class(label_dict):
