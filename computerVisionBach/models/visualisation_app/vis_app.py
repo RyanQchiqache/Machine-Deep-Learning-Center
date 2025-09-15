@@ -46,8 +46,6 @@ from computerVisionBach.models.visualisation_app.uni_infer import (
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
 OmegaConf.resolve(cfg)
 
-download_path = cfg.paths.download
-
 # =============================
 # App Config & Globals
 # =============================
@@ -92,6 +90,15 @@ def free_cuda():
         torch.cuda.empty_cache()
     gc.collect()
 
+def soft_reset_model():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
+    for k in ("bundle", "model", "_loaded_key"):
+        if k in st.session_state:
+            del st.session_state[k]
+    st.rerun()
 def safe_to_uint8(img: np.ndarray) -> np.ndarray:
     """Scale/clip float array to uint8 for display if needed."""
     if img.dtype == np.uint8:
@@ -208,7 +215,7 @@ def predict_full_image_patchwise(np_img: np.ndarray, crop: int) -> np.ndarray:
     pad_h = (crop - h % crop) % crop
     pad_w = (crop - w % crop) % crop
 
-    padded = np.pad(np_img, ((0, pad_h), (0, pad_w), (0, 0)), mode="reflect")
+    padded = np.pad(np_img, ((0, pad_h), (0, pad_w), (0, 0)), mode="symmetric")
     patches = patchify(padded, (crop, crop, c), step=crop)
 
     rows = []
@@ -266,6 +273,9 @@ st.markdown(
 )
 
 with st.sidebar:
+    if st.button("♻️ Reload Model Only"):
+        soft_reset_model()
+
     st.title("BEV Segmentation AI")
     dataset = st.selectbox("Dataset", DATASETS, index=0,
                            help="Pick the dataset the image belongs to (affects preprocessing & colors).")
@@ -314,6 +324,28 @@ with st.sidebar:
         st.session_state.expects_5ch = bundle.expects_5ch
         st.session_state._loaded_key = key_tuple
 
+        st.write({
+            "bundle": {
+                "name": st.session_state.bundle.name,
+                "num_classes": st.session_state.bundle.num_classes,
+                "in_channels": st.session_state.bundle.in_channels,
+                "is_hf": st.session_state.bundle.is_hf,
+                "processor": None if not st.session_state.bundle.is_hf else {
+                    "name_or_path": st.session_state.bundle.processor_spec.name_or_path,
+                    "reduce_labels": st.session_state.bundle.processor_spec.reduce_labels,
+                    "do_rescale": st.session_state.bundle.processor_spec.do_rescale,
+                    "size": st.session_state.bundle.processor_spec.size,
+                }
+            },
+            "ui": {
+                "dataset": dataset,
+                "model_choice": model_choice,
+                "num_classes_ui": int(num_classes_ui),
+                "in_channels_ui": int(in_channels_ui),
+                "crop": int(crop_size),
+            }
+        })
+
     st.subheader("Legend")
     render_legend(dataset, int(st.session_state.get("num_classes", num_classes_ui)))
 
@@ -328,7 +360,7 @@ np_img, disp_img = read_uploaded_image(uploaded, dataset, model_choice)
 
 # Display original
 st.subheader("🖼️ Original Image")
-st.image(disp_img, use_column_width=True)
+st.image(disp_img, use_container_width=True)
 
 # Inference method
 mode = st.radio("Select Inference Method", ["Full Image (patch-wise)", "Random Crop"], index=1)
@@ -345,33 +377,46 @@ if st.button("Run Segmentation"):
         pred_rgb = utils.class_to_rgb(pred_mask, get_colormap(dataset, int(st.session_state.num_classes)))
         if pred_rgb.shape[:2] != base_rgb.shape[:2]:
             pred_rgb = cv2.resize(pred_rgb, (base_rgb.shape[1], base_rgb.shape[0]))
-
         overlay = cv2.addWeighted(safe_to_uint8(base_rgb), 0.6, safe_to_uint8(pred_rgb), 0.4, 0)
 
     st.subheader("Segmentation Results")
     c1, c2 = st.columns(2)
-    c1.image(pred_rgb, caption="Predicted Mask", use_column_width=True)
-    c2.image(overlay, caption="Overlay", use_column_width=True)
+    c1.image(pred_rgb, caption="Predicted Mask", use_container_width=True)
+    c2.image(overlay, caption="Overlay", use_container_width=True)
 
-    # Save directory
-    download_path = cfg.paths.download
+    overlay_buf = io.BytesIO()
+    Image.fromarray(safe_to_uint8(overlay)).save(overlay_buf, format="PNG")
+    st.session_state.overlay_png = overlay_buf.getvalue()
+
+    pred_buf = io.BytesIO()
+    Image.fromarray(safe_to_uint8(pred_rgb)).save(pred_buf, format="PNG")
+    st.session_state.pred_png = pred_buf.getvalue()
+
+    download_path = OmegaConf.select(cfg, "paths.download", default=str(REPO_ROOT / "downloads"))
     os.makedirs(download_path, exist_ok=True)
+    Image.fromarray(safe_to_uint8(overlay)).save(os.path.join(download_path, "segmentation_overlay.png"))
+    Image.fromarray(safe_to_uint8(pred_rgb)).save(os.path.join(download_path, "segmented_image.png"))
 
-    # Overlay
-    overlay_img = Image.fromarray(safe_to_uint8(overlay))
-    overlay_img.save(os.path.join(download_path, "segmentation_overlay.png"))
-    buf = io.BytesIO()
-    overlay_img.save(buf, format="PNG")
-    st.download_button("💾 Download Overlay", buf.getvalue(), file_name="segmentation_overlay.png", mime="image/png")
-
-    # Prediction
-    pred_img = Image.fromarray(safe_to_uint8(pred_rgb))
-    pred_img.save(os.path.join(download_path, "segmented_image.png"))
-    buf = io.BytesIO()
-    pred_img.save(buf, format="PNG")
-    st.download_button("💾 Download Segmented Image", buf.getvalue(), file_name="segmented_image.png", mime="image/png")
-
-# =============================
+# ---- render download buttons OUTSIDE the Run block (they'll be available after rerun) ----
+if "overlay_png" in st.session_state or "pred_png" in st.session_state:
+    st.markdown("### Downloads")
+    c1, c2 = st.columns(3)
+    with c1:
+        st.download_button(
+            "💾 Download Segmented Image",
+            data=st.session_state.get("pred_png", b""),
+            file_name="segmented_image.png",
+            mime="image/png",
+            key="dl_pred"  # unique key
+        )
+    with c2:
+        st.download_button(
+            "💾 Download Overlay",
+            data=st.session_state.get("overlay_png", b""),
+            file_name="segmentation_overlay.png",
+            mime="image/png",
+            key="dl_overlay"  # unique key
+        )
 # Optional Styling
 # =============================
 st.markdown(
