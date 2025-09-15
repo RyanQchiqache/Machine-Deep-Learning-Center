@@ -1,16 +1,19 @@
-import sys
 from collections import Counter
-import os
+
+import os, json, re
 import torch
-from torch.utils.data import DataLoader
 import numpy as np
+
 from omegaconf import OmegaConf
 from pathlib import Path
+from loguru import logger
+from datetime import datetime
+from torch.utils.data import DataLoader
+
 config_file = Path(__file__).resolve().parent / "config" / "config.yaml"
 cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
-from loguru import logger
-import os, re
-from datetime import datetime
+
+
 
 def _safe_slug(s: str) -> str:
     """Make a string filesystem-safe and concise."""
@@ -21,6 +24,7 @@ def _safe_slug(s: str) -> str:
     s = s.replace("/", "-")
     s = re.sub(r"[^A-Za-z0-9._\-+]", "-", s)
     return s or "none"
+
 
 def compute_run_subdir(cfg, *, model_name=None, encoder_name=None, encoder_weights=None, dataset_name=None):
     """
@@ -38,6 +42,7 @@ def compute_run_subdir(cfg, *, model_name=None, encoder_name=None, encoder_weigh
 
     return os.path.join(dataset, model, f"enc-{enc}_w-{wts}")
 
+
 def build_log_dir(cfg, *, model_name=None, encoder_name=None, encoder_weights=None, dataset_name=None):
     """
     Final TB log dir:
@@ -52,6 +57,7 @@ def build_log_dir(cfg, *, model_name=None, encoder_name=None, encoder_weights=No
         log_root = os.path.join(log_root, stamp)
     os.makedirs(log_root, exist_ok=True)
     return log_root
+
 
 def build_checkpoint_path(cfg, *, model_name, encoder_name, encoder_weights, dataset_name, epoch=None, miou=None):
     """
@@ -87,6 +93,7 @@ def rgb_to_class_label(mask, color_map):
         raise ValueError("Some pixels in mask have no class mapping.")
     return label
 
+
 def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
     """
     Remaps original sparse label values (e.g., [1, 2, 6, 18]) to contiguous [0, 1, 2, ..., N-1]
@@ -99,7 +106,6 @@ def relabel_mask(mask: np.ndarray, original_labels: list) -> np.ndarray:
     return remapped
 
 
-
 def convert_masks_to_class_labels(masks):
     return np.array([rgb_to_class_label(mask) for mask in masks])
 
@@ -110,15 +116,18 @@ def class_to_rgb(mask, color_map):
         rgb_mask[mask == class_id] = color
     return rgb_mask
 
+
 def remap_mask(mask):
     result = np.zeros_like(mask, dtype=np.uint8)
     for i, class_id in enumerate(sorted(np.unique(mask))):
         result[mask == class_id] = i
     return result
 
+
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+
 
 def count_class_distribution(masks):
     total_counts = Counter()
@@ -142,6 +151,7 @@ def create_color_to_class(label_dict):
     color_to_class = {color: class_index for class_index, color in label_dict.items()}
     return color_to_class
 
+
 CLASS_COLOR_MAP = {
     0: np.array([60, 16, 152]),
     1: np.array([132, 41, 246]),
@@ -150,6 +160,7 @@ CLASS_COLOR_MAP = {
     4: np.array([226, 169, 41]),
     5: np.array([155, 155, 155])
 }
+
 COLOR_MAP_dense = {
     0: ['Low vegetation', '#f423e8'],
     1: ['Paved road', '#66669c'],
@@ -187,7 +198,7 @@ COLOR_MAP_multi_lane = {
     10: ['No parking zone', '#009696'],
     11: ['Parking space', '#c8c800'],
     12: ['Other lane-markings', '#6400c8'],
-    }
+}
 
 
 class_names = [
@@ -212,26 +223,8 @@ class_names = [
     "Impervious surface",       # class 19
     "Tree",                     # class 20
 ]
-import csv, os
 
-"""def append_results_csv(csv_path, row_dict):
-    # Creates header if file doesn’t exist yet
-    new_file = not os.path.exists(csv_path)
-    with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=row_dict.keys())
-        if new_file:
-            writer.writeheader()
-        writer.writerow(row_dict)
 
-row = {
-    "dataset": "FLAIR",
-    "split": "test",
-    "model": cfg.model.name,                 # e.g. "Unet++"
-    "encoder":cfg.model.smp.encoder_name ,             # e.g. "resnet50"
-    "seed": cfg.train.seed,                       # mIoU_macro, OA_micro, OA_macro, BoundaryF1, mIoU_rare, Params_M, PeakVRAM_GB, Latency_ms_per_img
-}
-append_results_csv("results_runs.csv", row)
-"""
 # ================================
 # Reconstruction of images
 # ================================
@@ -272,49 +265,12 @@ def reconstruct_two_examples(model, test_dataset, color_map, num_reconstructions
                 count += 1
                 all_images, all_masks, all_preds = [], [], []
 
-"""# ================================
-# patchify and load data kaggel
-# ================================
-def extract_patches_from_directory(directory, kind='images'):
-    dataset = []
-    for path, subdirs, files in os.walk(directory):
-        if path.endswith(kind):
-            for file in sorted(os.listdir(path)):
-                if (kind == 'images' and file.endswith('.jpg')) or (kind == 'masks' and file.endswith('.png')):
-                    img_path = os.path.join(path, file)
-                    img = cv2.imread(img_path, 1)
-                    if kind == 'masks':
-                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    h, w = (img.shape[0] // PATCH_SIZE) * PATCH_SIZE, (img.shape[1] // PATCH_SIZE) * PATCH_SIZE
-                    img = Image.fromarray(img).crop((0, 0, w, h))
-                    img = np.array(img)
-                    patches = patchify(img, (PATCH_SIZE, PATCH_SIZE, 3), step=PATCH_SIZE)
-                    for i in range(patches.shape[0]):
-                        for j in range(patches.shape[1]):
-                            dataset.append(patches[i, j, 0])
-    return np.array(dataset)
-
-
-def load_data(root_dir, test_size, seed):
-    images = extract_patches_from_directory(root_dir, kind='images')
-    masks_rgb = extract_patches_from_directory(root_dir, kind='masks')
-    masks_label = utils.convert_masks_to_class_labels(masks_rgb)
-
-    visualisation.visualize_sample(images, masks_rgb, masks_label)
-
-    X_train, X_test, y_train, y_test = train_test_split(images, masks_label, train_size=1 - test_size,
-                                                        random_state=seed)
-    train_dataset = SatelliteDataset(X_train, y_train)
-    test_dataset = SatelliteDataset(X_test, y_test)
-
-    return train_dataset, test_dataset"""
-
-import os, json
 
 def is_hf_semseg_model(model: torch.nn.Module) -> bool:
     """True for HF semseg models (SegFormer / UPerNet / Mask2Former)."""
     mtype = getattr(getattr(model, "config", None), "model_type", "")
     return str(mtype).lower() in {"segformer", "upernet", "mask2former"}
+
 
 def save_checkpoint(model, processor, cfg, best_miou: float) -> str:
     """
