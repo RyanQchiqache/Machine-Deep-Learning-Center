@@ -2,16 +2,17 @@ import os
 import cv2
 import sys
 import numpy as np
-import torch
+import albumentations as A
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
-from computerVisionBach.models.Unet_SS import visualisation
-from transformers import SegformerImageProcessor
-from torchvision import transforms as T
-from computerVisionBach.models.Unet_SS import utils
-import albumentations as A
+from omegaconf import OmegaConf
 from albumentations.pytorch import ToTensorV2
+from transformers import SegformerImageProcessor
+from computerVisionBach.models.Unet_SS import utils
+from computerVisionBach.models.Unet_SS.satellite_dataset.satellite_data import SatelliteDataset
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
 
 processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 patch_size, overlap = 512, 0.5
@@ -35,15 +36,18 @@ m2f_train_tf = A.Compose([
     A.HorizontalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
     A.VerticalFlip(p=0.5),
-    A.Rotate(limit=25),
-    A.Normalize(mean=ADE_MEAN, std=ADE_STD),
-    ToTensorV2()
 ])
 m2f_val_tf = A.Compose([
     A.Normalize(mean=ADE_MEAN, std=ADE_STD),
     ToTensorV2()
 ])
 
+sg_train_tf = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+])
+sg_val_tf =None
 
 # =====================================
 # patchify and load data DLR skyscapes
@@ -87,7 +91,7 @@ def load_folder(image_dir, mask_dir=None, patchify_enabled:bool=True):
             mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
 
             unique_classes = np.unique(mask)
-            print(f"{os.path.basename(mask_path)} → Classes present: {unique_classes}")
+            #print(f"{os.path.basename(mask_path)} → Classes present: {unique_classes}")
 
             if patchify_enabled:
                 image_p, _ = patchify_image_or_masks(img, patch_size, overlap)
@@ -142,18 +146,29 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
         relabeled[valid] = mask[valid] - 1  # remap 1–20 → 0–19
         return relabeled
 
-    if model_name == "Mask2former":
-        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf)
+    if model_name.lower() == "mask2former":
+        train_dataset = SatelliteDataset(X_train, y_train, transform=m2f_train_tf, relabel_fn=relabel_fn, is_hf_model=True)
+        val_dataset = SatelliteDataset(X_val, y_val, relabel_fn=relabel_fn, is_hf_model=True)
+        test_dataset = SatelliteDataset(X_test, masks=None, is_hf_model=True)
+
+
+    elif model_name.lower() in ["segformer", "upernet"]:
+        train_dataset = SatelliteDataset(
+            X_train, y_train, transform=sg_train_tf, relabel_fn=relabel_fn, is_hf_model=True
+        )
+        val_dataset = SatelliteDataset(
+            X_val, y_val, transform=sg_val_tf, relabel_fn=relabel_fn, is_hf_model=True
+        )
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=sg_val_tf, is_hf_model=True)
+
 
     else:
-        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn)
-        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn)
-        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True)
+        train_dataset = SatelliteDataset(X_train, y_train, transform=transforms, relabel_fn=relabel_fn_ignore, use_processor=cfg.data.dlr.use_processor, is_hf_model=cfg.data.dlr.is_hf_model)
+        val_dataset = SatelliteDataset(X_val, y_val, transform=val_tf, relabel_fn=relabel_fn_ignore, is_hf_model=cfg.data.dlr.is_hf_model)
+        test_dataset = SatelliteDataset(X_test, masks=None, transform=val_tf, is_test=True, is_hf_model=cfg.data.dlr.is_hf_model)
 
-    num_classes = 20  # or whatever you set in the model
-    """for i, (_, mask) in enumerate(train_dataset):
+    """num_classes = 20  # or whatever you set in the model
+    for i, (_, mask) in enumerate(train_dataset):
         uniques = torch.unique(mask)
         print(f"Sample {i}: Unique labels:", uniques.tolist())
         valid = (uniques == 255) | ((uniques >= 0) & (uniques < num_classes))
@@ -162,3 +177,18 @@ def load_data_dlr(base_dir, dataset_type="SS_Dense", model_name="Mask2former"):
     return train_dataset, val_dataset, test_dataset
 
 
+def relabel_fn_ignore(mask):
+    """
+    Remaps original class labels 1–20 into contiguous 0–15 labels,
+    ignoring classes 3, 5, 13, and 16 (set to 255).
+    """
+    to_ignore = {3, 5, 13, 16}
+    valid_classes = [i for i in range(1, 21) if i not in to_ignore]  # [1,2,4,6,...,20]
+    mapping = {orig: new_id for new_id, orig in enumerate(valid_classes)}
+
+    relabeled = np.full_like(mask, 255, dtype=np.int64)  # Default = ignore
+
+    for orig, new in mapping.items():
+        relabeled[mask == orig] = new
+
+    return relabeled

@@ -28,7 +28,7 @@ class FlairDataset(SatelliteDataset):
     }
 
     COLOR_TO_CLASS = utils.create_color_to_class(COLOR_MAP)
-    def __init__(self, image_input, mask_input, transform=None, relabel_fn=None, allowed_labels=None):
+    def __init__(self, image_input, mask_input, transform=None, relabel_fn=None, allowed_labels=None, use_processor=None, is_hf_model=None):
         if isinstance(image_input, (list, tuple, np.ndarray)) and isinstance(mask_input, (list, tuple, np.ndarray)):
             image_paths = image_input
             mask_paths = mask_input
@@ -43,6 +43,7 @@ class FlairDataset(SatelliteDataset):
             masks=mask_paths,
             transform=transform,
             relabel_fn=relabel_fn,
-            allowed_labels = allowed_labels
+            allowed_labels = allowed_labels,
+            use_processor = use_processor,
+            is_hf_model = is_hf_model
         )
-

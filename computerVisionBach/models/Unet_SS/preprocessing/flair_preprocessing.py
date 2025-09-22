@@ -1,26 +1,35 @@
 import os
+import csv
 import sys
 import numpy as np
+import albumentations as A
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
-from typing import Tuple, List, Optional
-import csv
-from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
-from transformers import SegformerImageProcessor
-import torch
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b2-finetuned-ade-512-512")
 
-tf_train = A.Compose([
-    A.HorizontalFlip(p=0.5),
+from omegaconf import OmegaConf
+from typing import Tuple, List, Optional
+from albumentations.pytorch import ToTensorV2
+from transformers import SegformerImageProcessor
+from computerVisionBach.models.Unet_SS.satellite_dataset.flair_dataset import FlairDataset
+
+cfg = OmegaConf.load("/home/ryqc/data/Machine-Deep-Learning-Center/computerVisionBach/models/Unet_SS/config/config.yaml")
+OmegaConf.resolve(cfg)
+
+smp_trans = A.Compose([
+A.HorizontalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
     A.VerticalFlip(p=0.5),
     A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
+tf_train = A.Compose([
+A.HorizontalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.VerticalFlip(p=0.5),
+])
 
-tf_val = A.Compose([
+smp_trans_val = A.Compose([
     A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
@@ -53,7 +62,8 @@ def prepare_datasets_from_csvs(
 
     train_imgs, train_masks = zip(*train_pairs)
     val_imgs, val_masks = zip(*val_pairs)
-
+    #test_images, test_masks = train_imgs[:40], train_masks[:40]
+    #t_val_images, t_val_masks = val_imgs[:40], val_masks[:40]
     def relabel_fn(mask):
         relabeled = np.full_like(mask, 255, dtype=np.int64)
         valid = (mask >= 1) & (mask <= 19)
@@ -66,18 +76,18 @@ def prepare_datasets_from_csvs(
         and remaps them to 0 to 11. All other pixels are mapped to 255 (ignore index).
         """
         relabeled = np.full_like(mask, 255, dtype=np.uint8)  # 255 = ignore index
-        for i in range(1, 14):  # FLAIR class IDs 1–13
-            relabeled[mask == i] = i - 1  # Remap to 0–12
+        for i in range(1, 13):  # FLAIR class IDs 1–12
+            relabeled[mask == i] = i - 1  # Remap to 0–11
         return relabeled
 
-    train_dataset = FlairDataset(train_imgs, train_masks, transform=tf_train, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(13)))
-    val_dataset = FlairDataset(val_imgs, val_masks,transform=tf_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(13)))
+    train_dataset = FlairDataset(train_imgs, train_masks, transform=smp_trans, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=cfg.data.flair.use_processor, is_hf_model=cfg.data.flair.is_hf_model)
+    val_dataset = FlairDataset(val_imgs, val_masks,transform=smp_trans_val, relabel_fn=relabel_fn_12, allowed_labels=tuple(range(12)), use_processor=cfg.data.flair.use_processor, is_hf_model=cfg.data.flair.is_hf_model)
 
     if test_csv_path is not None:
         test_pairs = load_csv(test_csv_path)
         test_pairs = [(resolve_path(img), resolve_path(mask)) for img, mask in test_pairs]
         test_imgs, test_masks = zip(*test_pairs)
-        test_dataset = FlairDataset(test_imgs, test_masks, transform=tf_val)
+        test_dataset = FlairDataset(test_imgs, test_masks, transform=None)
 
     else:
         test_dataset = None

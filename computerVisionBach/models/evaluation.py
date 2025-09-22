@@ -1,11 +1,11 @@
 import time
+from tqdm import tqdm
 from typing import Dict, Iterable, Optional, Sequence
-
+from loguru import logger
 import torch
 import torch.nn.functional as F
 from torchmetrics.classification import MulticlassJaccardIndex, MulticlassAccuracy
-from computerVisionBach.models.model_pipeline import N_CLASSES, IGNORE_CLASS_INDEX
-IGNORE_INDEX = IGNORE_CLASS_INDEX
+
 
 def evaluate(
     model: torch.nn.Module,
@@ -75,19 +75,48 @@ def evaluate(
     total_images = 0
     total_forward_time_s = 0.0
 
+    import numpy as np
+
+    IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+    IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+
     @torch.no_grad()
-    def _pred_logits(images: torch.Tensor):
-        # HF path (processor provided): returns logits [B, C, h, w]
-        if processor is not None:
-            # If processor expects PIL/np, many HF processors also accept tensors with channel-first.
-            # We keep tensors and let the processor handle normalization/resize.
-            inputs = processor(images=images, return_tensors="pt")
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-            outputs = model(**inputs)
-            logits = getattr(outputs, "logits", outputs)  # be robust to ModelOutput vs tensor
-            return logits
-        # SMP / plain PyTorch path
-        return model(images)
+    def _pred_any(images: torch.Tensor, out_size_hw=None):
+        """
+        Returns either:
+          - logits [B, C, h, w]  (SegFormer / UPerNet)
+          - labels [B, H, W]     (Mask2Former-universal post-processed)
+        """
+        if processor is None:
+            return model(images)
+
+        # If your dataset normalized tensors, de-normalize to [0,1] for HF processor
+        imgs = images
+        if imgs.min() < 0 or imgs.max() > 1:
+            imgs = imgs * IMAGENET_STD + IMAGENET_MEAN
+        imgs = (imgs.clamp(0, 1) * 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()  # N,H,W,C uint8
+
+        # Build inputs (no segmentation_maps during eval)
+        inputs = processor(images=list(imgs), return_tensors="pt")
+        inputs = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in inputs.items()}
+
+        outputs = model(**inputs)
+
+        # If model exposes per-pixel logits (e.g., SegFormer/UPerNet), use them
+        if hasattr(outputs, "logits") and outputs.logits is not None:
+            return outputs.logits  # [B, C, h, w]
+
+        # Mask2Former-universal: post-process to semantic label maps [H,W] per image
+        target_sizes = [out_size_hw] * inputs["pixel_values"].shape[0] if out_size_hw is not None else None
+        if hasattr(processor, "post_process_semantic_segmentation"):
+            sem = processor.post_process_semantic_segmentation(outputs, target_sizes=target_sizes)
+        else:
+            # older name in some versions
+            sem = processor.post_process_semantic(outputs, target_sizes=target_sizes)
+
+        # sem is a list of tensors or numpy arrays [H,W]; stack to [B,H,W] on device
+        sem = [torch.as_tensor(s, device=device, dtype=torch.long) for s in sem]
+        return torch.stack(sem, dim=0)  # [B, H, W]
 
     def _make_boundary_map(mask: torch.Tensor) -> torch.Tensor:
         """
@@ -152,7 +181,7 @@ def evaluate(
         return tp, fp, fn
 
     with torch.no_grad():
-        for images, masks in dataloader:
+        for images, masks in tqdm(dataloader, desc="Evaluation", leave=False):
             images = images.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
 
@@ -160,14 +189,19 @@ def evaluate(
                 torch.cuda.synchronize(device)
             start = time.perf_counter()
 
-            logits = _pred_logits(images)
-
-            # Harmonize shape
-            if logits.shape[-2:] != masks.shape[-2:]:
-                logits = F.interpolate(logits, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+            out = _pred_any(images, out_size_hw=masks.shape[-2:])
+            if out.dim() == 4:
+                logits = out
+                if logits.shape[-2:] != masks.shape[-2:]:
+                    logits = F.interpolate(logits, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+                preds = torch.argmax(logits, dim=1)  # [B,H,W]
+            elif out.dim() == 3:
+                preds = out.long()  # already per-pixel class IDs [B,H,W]
+            else:
+                raise RuntimeError(f"Unexpected model output shape: {tuple(out.shape)}")
 
             # Argmax over classes
-            preds = torch.argmax(logits, dim=1)  # [B, H, W]
+            #preds = torch.argmax(logits, dim=1)  # [B, H, W]
 
             if is_cuda:
                 torch.cuda.synchronize(device)
@@ -256,6 +290,16 @@ def evaluate(
         # Per-class IoU histograms/scalars
         for k, val in enumerate(per_class_ious.tolist()):
             writer.add_scalar(f"{log_prefix}/IoU_Class_{k}", float(val), epoch)
+
+    per_cls = per_class_ious.detach().float().cpu().tolist()
+    logger.success(f"✓ Mean IoU: {miou_macro:.4f}")
+    for k, v in enumerate(per_cls):
+        if k == ignore_index:
+            continue
+        if v != v:
+            logger.info(f"  └─ Class {k:02d} IoU: nan")
+        else:
+            logger.info(f"  └─ Class {k:02d} IoU: {v:.4f}")
 
     # -------- Reset torchmetrics (safe if you reuse evaluator)
     iou_macro.reset()

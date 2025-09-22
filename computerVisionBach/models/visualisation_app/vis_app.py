@@ -400,7 +400,7 @@ if st.button("Run Segmentation"):
 # ---- render download buttons OUTSIDE the Run block (they'll be available after rerun) ----
 if "overlay_png" in st.session_state or "pred_png" in st.session_state:
     st.markdown("### Downloads")
-    c1, c2 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
         st.download_button(
             "💾 Download Segmented Image",

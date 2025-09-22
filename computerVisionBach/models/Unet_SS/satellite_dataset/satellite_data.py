@@ -1,14 +1,13 @@
-import os
-import torch
-from torch.utils.data import Dataset
-from typing import Optional, Callable, Tuple
-import numpy as np
-import PIL.Image as I
-import rasterio
 import cv2
+import torch
+import rasterio
+import numpy as np
+
+from torch.utils.data import Dataset
+from typing import Optional, Tuple
 
 class SatelliteDataset(Dataset):
-    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None):
+    def __init__(self, images, masks, rgb_to_class=None, patchify_enabled=False, patch_size=512, transform=None, relabel_fn=None, is_test=False, allowed_labels: Optional[Tuple[int]] = None, use_processor: bool = False, is_hf_model:bool = True):
         self.images = images
         self.masks = masks
         self.rgb_to_class = rgb_to_class
@@ -19,6 +18,8 @@ class SatelliteDataset(Dataset):
         self.relabel_fn = relabel_fn
         self.is_test = is_test
         self.allowed_labels = allowed_labels
+        self.use_processor = use_processor
+        self.is_hf_model = is_hf_model
 
     def __len__(self):
         return len(self.images)
@@ -99,12 +100,20 @@ class SatelliteDataset(Dataset):
 
         # 6) transforming / tensorize
         if self.transform:
-            transformed = self.transform(image=image, mask=mask)
-            image = transformed["image"]
-            mask = transformed["mask"].long()
+            if self.is_hf_model:
+                transformed = self.transform(image=image, mask=mask)
+                image = transformed["image"]
+                mask = transformed["mask"]
+            else:
+                transformed = self.transform(image=image, mask=mask)
+                image = transformed["image"]
+                mask = transformed["mask"].long()
+
         else:
-            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
-            mask = torch.from_numpy(mask).long()
-
+            if self.use_processor:
+                return image, mask
+            else:
+                image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.
+                mask = torch.from_numpy(mask).long()
+        #print(f"[Dataset] idx={idx} | image={type(image)}, {getattr(image, 'shape', None)} | mask={type(mask)}, {getattr(mask, 'shape', None)}")
         return image, mask
-
